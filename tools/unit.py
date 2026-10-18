@@ -7,7 +7,7 @@ Usage:
     tools/unit.py --probe                 # just check reachability and login
 
 Host and credentials come from the environment:
-    UNIT_HOST (default 192.168.2.1), UNIT_PORT (23), UNIT_USER, UNIT_PASS
+    UNIT_HOST (default 192.168.1.4), UNIT_PORT (23), UNIT_USER, UNIT_PASS
 
 This is a minimal telnet client of its own: macOS no longer ships telnet, and `nc`
 trips over IAC negotiation.
@@ -129,7 +129,7 @@ def main():
     ap.add_argument("--timeout", type=float, default=60.0)
     a = ap.parse_args()
 
-    host = os.environ.get("UNIT_HOST", "192.168.2.1")
+    host = os.environ.get("UNIT_HOST", "192.168.1.4")
     port = int(os.environ.get("UNIT_PORT", "23"))
     user = os.environ.get("UNIT_USER", "root")
     pw   = os.environ.get("UNIT_PASS", "root")

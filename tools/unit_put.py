@@ -28,7 +28,7 @@ def main():
         name = posixpath.basename(path)
         with open(path, "rb") as fh:
             f.storbinary("STOR " + name, fh, blocksize=32768)
-        print("nahrano %s -> %s/%s (%d B)" % (path, a.to, name, os.path.getsize(path)))
+        print("sent %s -> %s/%s (%d B)" % (path, a.to, name, os.path.getsize(path)))
     f.quit()
     return 0
 

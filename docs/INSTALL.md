@@ -11,8 +11,10 @@ packaged install, your own car, your own risk — including **voiding your warra
 - iPhone with CarPlay and a navigation app.
 
 ```bash
-sudo ifconfig en6 inet 192.168.1.10 netmask 255.255.255.0 up   # unit at 192.168.1.4
+sudo ifconfig <iface> inet 192.168.1.10 netmask 255.255.255.0 up
 ```
+
+The tools default to `192.168.1.4` for the unit; override with `UNIT_HOST=x.x.x.x`.
 
 ## Build
 

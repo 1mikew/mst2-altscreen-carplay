@@ -11,6 +11,6 @@ up "$R/build/mst2/alt111-dump" --to /tmp
 u "chmod 755 /tmp/alt111-dump; touch /tmp/mibr-alt111-keyframe-only"
 echo "== waiting for a keyframe (Type-111 sends one about every 29 s)"
 sleep 35
-u "grep -E 'BEZI|RUNNING|init subtype|posl' /tmp/cpvc_111.log | tail -5
+u "grep -E 'RUNNING|init subtype|NALs sent' /tmp/cpvc_111.log | tail -5
 echo '--- context state ---'
 cat /pps/services/multimedia/renderer/context/cpvc111/state 2>/dev/null | grep -E 'state::|error'"

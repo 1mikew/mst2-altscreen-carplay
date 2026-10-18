@@ -11,6 +11,6 @@ def main():
     with open(loc, "wb") as fh:
         f.retrbinary("RETR " + rem, fh.write, blocksize=32768)
     f.quit()
-    print("stazeno %s -> %s (%d B)" % (rem, loc, os.path.getsize(loc)))
+    print("got %s -> %s (%d B)" % (rem, loc, os.path.getsize(loc)))
     return 0
 if __name__ == "__main__": sys.exit(main())

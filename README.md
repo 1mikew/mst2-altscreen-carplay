@@ -7,9 +7,10 @@ A downstream port of **[harman-f/mhi2_altscreen_carplay](https://github.com/harm
 to a platform it cannot run on. Not a GitHub fork only because forks are excluded from
 search, and this project needs to be findable by people with other units.
 
-![CarPlay navigation on the Virtual Cockpit](docs/images/cockpit.jpg)
+[![Switching CarPlay maps on the Virtual Cockpit](docs/images/demo.gif)](https://www.youtube.com/shorts/Reirt4VjI4Y)
 
-*CarPlay navigation on the cluster. The radio display is running CarPlay at the same time.*
+*Google Maps and Waze switched on the cluster, CarPlay running on the radio display the
+whole time — [full video](https://www.youtube.com/shorts/Reirt4VjI4Y).*
 
 > ### ⚠️ READ FIRST
 >

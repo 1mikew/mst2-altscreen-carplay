@@ -17,6 +17,10 @@ MPEG-TS to `/dev/mlb/isoTX2` cannot be ported.
 
 ## Displays
 
+![CarPlay navigation on the cluster](images/cockpit.jpg)
+
+*`dpy-6` carrying a CarPlay map instead of the stock one.*
+
 | display | size | pipeline | role |
 |---|---|---|---|
 | `dpy-1` | 800×480 | 2 | radio screen |

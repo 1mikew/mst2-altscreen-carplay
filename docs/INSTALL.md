@@ -5,7 +5,8 @@ packaged install, your own car, your own risk — including **voiding your warra
 
 ## Prerequisites
 
-- MIB2 Standard "MST2", firmware `MST2_EU_SK_ZR_P0480T`. Nothing else is tested.
+- MIB2 Standard "MST2", firmware `MST2_EU_SK_ZR_P0480T`. Other builds are intended but
+  untested — there is no second unit to try them on.
 - Shell access (telnet) and FTP on the unit.
 - Docker, for the QNX 6.5 ARMv7 toolchain.
 - iPhone with CarPlay and a navigation app.

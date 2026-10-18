@@ -37,7 +37,13 @@ CarPlay screen keeps running on the radio display. Two independent displays, one
 | ⬜ Frame rate | 10 fps measured; raising it untested |
 
 Road-tested on one vehicle. Target: **MIB2 Standard "MST2"**, firmware
-`MST2_EU_SK_ZR_P0480T` (Škoda Amundsen). Nothing else is tested.
+`MST2_EU_SK_ZR_P0480T` (Škoda Amundsen).
+
+**Other firmware is intended, not supported yet** — we simply have no other unit to test
+on. Most of the work is firmware-independent (the CarPlay session, the push protocol, the
+window handling), so widening support is a matter of testing rather than redesign. If you
+have a MIB2 Standard unit with shell access, see *Help wanted* in
+[ROADMAP.md](ROADMAP.md).
 
 👉 **[ROADMAP.md](ROADMAP.md)** — full status, what is missing, what is planned.
 

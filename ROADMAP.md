@@ -27,7 +27,7 @@ on one car; everything else is not done.
 | ⬜ | Steering-wheel view/zoom *(fork)* | Wheel currently zooms the stock map |
 | ⬜ | Native navigation arrows / RGI *(fork)* | Drive cluster widgets from CarPlay metadata over BAP NavSD |
 | 🔬 | **Test a higher frame rate** | 10 fps observed. Set by DisplayManager at FPK setup — head-unit side, where we have access, and 1/0 seen in other states. Worth testing; nothing says it cannot go higher |
-| ⬜ | Other firmware | Only `P0480T` tested. Needs testers |
+| ⬜ | Other firmware | Wanted, but only `P0480T` can be tested here — no other unit available |
 | ⛔ | `/dev/mlb` transport | No such device on this platform |
 
 ## Known limits
@@ -54,10 +54,13 @@ controls on a covered picture cannot be evaluated.
 8. 🔬 **Test a higher frame rate.** Angles: where DisplayManager takes the value from at
    FPK setup, whether the advertised `maxFPS` matters (the hook already has a runtime
    override), and upstream's Continental FPK research
-9. ⬜ Broader firmware coverage
+9. ⬜ **Broader firmware coverage.** Blocked on access, not on design: most of the work is
+   firmware-independent. Needs people with other units
 
 ## Help wanted
 
-- Other **MIB2 Standard** firmware with shell access — does the window and protocol work hold?
+- **Other MIB2 Standard firmware** with shell access. This is the single biggest gap: we
+  want to support more than one build and cannot, because there is only one unit to test
+  on. Do the window parameters and the push protocol hold on yours?
 - Experience with **QNX Screen**, **BAP/FPK** on MQB, or the **J9/JXE HMI**
 - Navigation-transition traces from other units

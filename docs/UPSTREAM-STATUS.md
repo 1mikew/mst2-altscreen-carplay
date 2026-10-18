@@ -17,7 +17,7 @@ V850 CAN). Its alt-screen feature line sits at **SafeArea calibration**, its cur
 | Decoder on the head unit | none needed | own mm-renderer context |
 | Keyframe recovery | ✅ D2 | ✅ upstream D2 |
 | Frame rate | 20 fps native, ~28 measured | 10 fps observed, set at FPK setup |
-| **Cluster** | MQB Virtual Cockpit | **the same cluster** |
+| **Cluster** | MQB Virtual Cockpit | AID 10", part `5E0920790A` |
 | Canvas | 1010×376 baseline | 1010×376 — identical |
 | Reversible install | ✅ | ✅ |
 | Provider switching | ✅ vehicle proof of concept (Apple/Google/Waze) | ✅ road-tested |
@@ -27,9 +27,12 @@ V850 CAN). Its alt-screen feature line sits at **SafeArea calibration**, its cur
 | "Navigation on phone" overlay | n/a on their HMI | 🟥 blocking |
 
 **The cluster is shared; only the head units differ.** Both sides independently measured a
-1010×376 canvas — unrelated panels would not land on the same number. That establishes the
-*video contract*, not that the *usable area* is identical: SafeArea follows the physical
-panel, so check the cluster part number before taking presets over unchanged.
+1010×376 canvas — unrelated panels would not land on the same number.
+
+That establishes the *video contract*. Whether the *usable area* is identical depends on
+the physical panel, so SafeArea presets should be matched by part number. This side is
+**AID 10", `5E0920790A`** (Octavia); if upstream's differs, the presets may need their own
+calibration even though the canvas matches.
 
 ## What ports across
 

@@ -10,6 +10,7 @@
 | CarPlay process | `/tsd/bin/sal/tsd.mibstd2.sal.main` (service `iMX6.SAL`) |
 | Video | `mm-renderer`, `mdev_streamer.so` input, `imx6_video_decoder.so` |
 | Cluster video | `tsd.mibstd2.system.displaymanager` |
+| Cluster | Virtual Cockpit AID 10", part `5E0920790A` |
 
 **No `/dev/mlb` anywhere.** MOST is behind the Jacinto 5 — the MHI2 approach of writing
 MPEG-TS to `/dev/mlb/isoTX2` cannot be ported.

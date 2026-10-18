@@ -36,8 +36,12 @@ CarPlay screen keeps running on the radio display. Two independent displays, one
 | ⬜ Cleanup on disconnect | Last frame stays until the cockpit view is switched |
 | ⬜ Frame rate | 10 fps measured; raising it untested |
 
-Road-tested on one vehicle. Target: **MIB2 Standard "MST2"**, firmware
-`MST2_EU_SK_ZR_P0480T` (Škoda Amundsen).
+Road-tested on one vehicle:
+
+| | |
+|---|---|
+| Head unit | MIB2 Standard "MST2", firmware `MST2_EU_SK_ZR_P0480T` (Škoda Amundsen) |
+| Cluster | Virtual Cockpit **AID 10", part `5E0920790A`** |
 
 **Other firmware is intended, not supported yet** — we simply have no other unit to test
 on. Most of the work is firmware-independent (the CarPlay session, the push protocol, the

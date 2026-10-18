@@ -3,13 +3,15 @@
 CarPlay's **instrument-cluster navigation view** on the Virtual Cockpit, while the main
 CarPlay screen keeps running on the radio display. Two independent displays, one phone.
 
-![CarPlay navigation on the Virtual Cockpit](docs/images/cockpit.jpg)
+<p align="center">
+  <img src="docs/images/cockpit.jpg" width="700" alt="CarPlay navigation on the Virtual Cockpit"><br>
+  <em>CarPlay navigation on the cluster. The radio display is running CarPlay at the same time.</em>
+</p>
 
-*CarPlay navigation on the cluster. The radio display is running CarPlay at the same time.*
-
-[![Switching CarPlay maps on the Virtual Cockpit](docs/images/demo.gif)](https://www.youtube.com/shorts/Reirt4VjI4Y)
-
-*Google Maps and Waze switched on the cluster — [full video](https://www.youtube.com/shorts/Reirt4VjI4Y).*
+<p align="center">
+  <a href="https://www.youtube.com/shorts/Reirt4VjI4Y"><img src="docs/images/demo.gif" width="700" alt="Switching CarPlay maps on the Virtual Cockpit"></a><br>
+  <em>Google Maps and Waze switched on the cluster — <a href="https://www.youtube.com/shorts/Reirt4VjI4Y">full video</a>.</em>
+</p>
 
 > ### ⚠️ READ FIRST
 >

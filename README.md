@@ -3,6 +3,10 @@
 CarPlay's **instrument-cluster navigation view** on the Virtual Cockpit, while the main
 CarPlay screen keeps running on the radio display. Two independent displays, one phone.
 
+A downstream port of **[harman-f/mhi2_altscreen_carplay](https://github.com/harman-f/mhi2_altscreen_carplay)**
+to a platform it cannot run on. Not a GitHub fork only because forks are excluded from
+search, and this project needs to be findable by people with other units.
+
 ![CarPlay navigation on the Virtual Cockpit](docs/images/cockpit.jpg)
 
 *CarPlay navigation on the cluster. The radio display is running CarPlay at the same time.*

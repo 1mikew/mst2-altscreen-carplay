@@ -17,6 +17,7 @@ V850 CAN). Its alt-screen feature line sits at **SafeArea calibration**, its cur
 | Decoder on the head unit | none needed | own mm-renderer context |
 | Keyframe recovery | ✅ D2 | ✅ upstream D2 |
 | Frame rate | 20 fps native, ~28 measured | 10 fps observed, set at FPK setup |
+| **Head unit** | Harman MHI2 "High" | Škoda Amundsen 8", part `5Q0035874C` |
 | **Cluster** | MQB Virtual Cockpit | AID 10", part `5E0920790A` |
 | Canvas | 1010×376 baseline | 1010×376 — identical |
 | Reversible install | ✅ | ✅ |

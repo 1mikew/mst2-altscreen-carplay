@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| Head unit | MIB2 Standard "MST2", TechniSat/Preh |
+| Head unit | Škoda Amundsen 8", part `5Q0035874C` — MIB2 Standard "MST2", TechniSat/Preh |
 | SoC | i.MX6 quad Cortex-A9, QNX Neutrino 6.5 |
 | Second chip | TI Jacinto 5 — owns MOST, reached over an internal IP link |
 | CarPlay process | `/tsd/bin/sal/tsd.mibstd2.sal.main` (service `iMX6.SAL`) |

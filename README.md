@@ -46,7 +46,7 @@ Road-tested on one vehicle:
 
 | | |
 |---|---|
-| Head unit | MIB2 Standard "MST2", firmware `MST2_EU_SK_ZR_P0480T` (Škoda Amundsen) |
+| Head unit | Škoda Amundsen 8", part `5Q0035874C` — MIB2 Standard "MST2", firmware `MST2_EU_SK_ZR_P0480T` |
 | Cluster | Virtual Cockpit **AID 10", part `5E0920790A`** |
 
 **Other firmware is intended, not supported yet** — we simply have no other unit to test

@@ -49,6 +49,10 @@ tools/persist.sh        # survives reboot, enables the keyframe policy
 tools/set-output.sh …   # experiments: writes to /tmp, wins, cleared on reboot
 ```
 
+Nothing has to be exported from the unit for this. The decoder initialisation is built
+from the live stream at runtime; the fallback prologue needs a capture of your own and is
+skipped if you do not have one.
+
 ## Run
 
 Connect the iPhone, start a navigation app, make sure the **map is active on the cockpit** —

@@ -1,4 +1,4 @@
-# CarPlay on the Virtual Cockpit — MIB2 Standard (MST2)
+# CarPlay maps on the Virtual Cockpit — MIB2 Standard (MST2)
 
 CarPlay's **instrument-cluster navigation view** on the Virtual Cockpit, while the main
 CarPlay screen keeps running on the radio display. Two independent displays, one phone.

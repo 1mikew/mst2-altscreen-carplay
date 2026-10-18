@@ -1,0 +1,82 @@
+# CarPlay on the Virtual Cockpit — MIB2 Standard (MST2)
+
+CarPlay's **instrument-cluster navigation view** on the Virtual Cockpit, while the main
+CarPlay screen keeps running on the radio display. Two independent displays, one phone.
+
+![CarPlay navigation on the Virtual Cockpit](docs/images/cockpit.jpg)
+
+*CarPlay navigation on the cluster. The radio display is running CarPlay at the same time.*
+
+> ### ⚠️ READ FIRST
+>
+> **Work in progress. Not finished, not a product, not an installer.**
+>
+> - **Not an SD-card solution.** You need shell access to your own head unit.
+> - **Experiments can leave the unit unusable until a reboot**, or take it down entirely.
+> - **No warranty. No liability** for damage to head units, clusters, any other vehicle
+>   component, or data — and modifying a head unit **will very likely void your
+>   manufacturer warranty**.
+> - Your own vehicle only, where legal.
+>
+> If that is not acceptable, stop here.
+
+## Status
+
+`✅ works` · `🟥 blocking` · `⬜ not yet`
+
+| | |
+|---|---|
+| ✅ Cockpit | CarPlay cluster navigation, decoded natively (1024×384) |
+| ✅ Radio display | Normal CarPlay, unaffected |
+| ✅ Apps | Apple Maps, Waze, Google Maps — seamless switching |
+| 🟥 Route guidance | The cluster covers the picture with "navigation is running on the phone" |
+| ⬜ Layout / SafeArea | Picture is composed blind — not calibrated against the cluster's own elements |
+| ⬜ Steering-wheel control | The wheel still zooms the stock map, not CarPlay |
+| ⬜ Navigation arrows | No native cluster widgets driven from CarPlay metadata |
+| ⬜ Cleanup on disconnect | Last frame stays until the cockpit view is switched |
+| ⬜ Frame rate | 10 fps measured; raising it untested |
+
+Road-tested on one vehicle. Target: **MIB2 Standard "MST2"**, firmware
+`MST2_EU_SK_ZR_P0480T` (Škoda Amundsen). Nothing else is tested.
+
+👉 **[ROADMAP.md](ROADMAP.md)** — full status, what is missing, what is planned.
+
+## Why this exists
+
+From the factory, MIB2 Standard shows the navigation map in **one place at a time** —
+cockpit **or** radio display — and only the built-in Škoda map.
+
+Getting CarPlay maps onto the Virtual Cockpit has been solved elsewhere, but **no public
+project covers MST / MIB2 Standard units**. The known work targets **Harman MHI2 ("High")**
+and cannot run here: MST2 has **no `/dev/mlb`** at all — MOST sits behind a second chip
+(TI Jacinto 5).
+
+The goal is a third-party map on the cluster, past what the unit does from the factory.
+**That limit is not hardware:** with both displays running, load is ~3 % of the quad-core,
+because decode and encode happen on the VPU.
+
+| | MHI2 (harman-f, omonob) | MIB2 Standard (this) |
+|---|---|---|
+| Source | CarPlay Type-111 alt screen | same |
+| Decoding | none — the cluster decodes | **own mm-renderer context** |
+| Path to cluster | MPEG-TS → `/dev/mlb/isoTX2` | render to `dpy-6`, DisplayManager captures |
+| Entry point | after the encoder | before it |
+
+The architecture transfers between platforms; the code does not.
+
+## Documentation
+
+| | |
+|---|---|
+| [ROADMAP.md](ROADMAP.md) | status, gaps, plan |
+| [docs/UPSTREAM-STATUS.md](docs/UPSTREAM-STATUS.md) | side by side with upstream, what can be forked |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | how the picture reaches the cluster |
+| [docs/INSTALL.md](docs/INSTALL.md) | developer install, kill switch, uninstall |
+| [docs/PROTOCOL-MDEVPUSH.md](docs/PROTOCOL-MDEVPUSH.md) | the undocumented push protocol |
+| [docs/FINDINGS.md](docs/FINDINGS.md) | constraints, dead ends, corrections |
+
+## Licence
+
+GPL-3.0-or-later. Forked from
+**[harman-f/mhi2_altscreen_carplay](https://github.com/harman-f/mhi2_altscreen_carplay)** —
+see [CREDITS.md](CREDITS.md).

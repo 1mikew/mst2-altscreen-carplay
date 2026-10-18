@@ -3,3 +3,6 @@ unit-logs/
 captures/*
 !captures/README.md
 *.o
+
+# vendor firmware libraries -- fetch from your own unit, never redistribute
+src/linkstubs/*.so*

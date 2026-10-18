@@ -80,3 +80,23 @@ The architecture transfers between platforms; the code does not.
 GPL-3.0-or-later. Forked from
 **[harman-f/mhi2_altscreen_carplay](https://github.com/harman-f/mhi2_altscreen_carplay)** —
 see [CREDITS.md](CREDITS.md).
+
+## Legal
+
+**Independent project. Not affiliated with, endorsed by, sponsored by or connected to
+Volkswagen AG, Škoda Auto a.s., Apple Inc., BlackBerry Limited (QNX), TechniSat or Preh,
+or any of their subsidiaries.**
+
+Volkswagen, Škoda, Amundsen, MIB and Virtual Cockpit are trademarks of Volkswagen AG
+and/or its subsidiaries. Apple, CarPlay and Apple Maps are trademarks of Apple Inc. QNX is
+a trademark of BlackBerry Limited. Used here only to identify the hardware and software
+this project works with — nominative use, no claim of ownership.
+
+**No vendor firmware, binaries, map data or other proprietary material is distributed
+here.** Everything in this repository is either original work, a fork of GPL-3.0 code
+(see [CREDITS.md](CREDITS.md)), or a description of observed behaviour. The build links
+against two libraries from the head unit, which you fetch from your own vehicle
+(`tools/pull-linkstubs.sh`); they are never copied into the output or redistributed.
+
+Interoperability research on a device you own. Check what applies where you live before
+using it.

@@ -6,6 +6,12 @@
 #   alt111-dump         captures the Type-111 stream for offline analysis
 set -euo pipefail
 cd "$(dirname "$0")"
+
+# The linker needs two libraries from the head unit. They are vendor firmware and are not
+# redistributed with this project -- fetch them from your own unit.
+for f in src/linkstubs/libmmrndclient.so.1 src/linkstubs/libstrm.so.1; do
+    [ -f "$f" ] || { echo "missing $f -- run: tools/pull-linkstubs.sh"; exit 1; }
+done
 docker run --rm --platform=linux/amd64 -v "$PWD:/w" -w /w mhi2-qnx65-armv7-public:4.9 bash -c '
 set -e
 S=src/altscreen111-mst2; O=build/mst2; mkdir -p $O

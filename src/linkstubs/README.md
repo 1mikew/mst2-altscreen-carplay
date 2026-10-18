@@ -1,17 +1,18 @@
 # Link stubs
 
-The build links against two libraries from the head unit:
+The hook calls into two head-unit libraries:
 
 ```
-/usr/lib/libmmrndclient.so.1    QNX mm-renderer client
-/usr/lib/libstrm.so.1
+libmmrndclient.so.1    QNX mm-renderer client
+libstrm.so.1
 ```
 
-They are **vendor firmware components and are not redistributed here.** They are used only
-to resolve symbols at link time; nothing from them ends up in the build output.
+**Neither is redistributed here.** `build.sh` generates stub libraries from
+`mmrndclient_stub.c` and `strm_stub.c`, which define only the twelve symbols the hook
+references. That is enough to link.
 
-Fetch them from your own unit:
+The stubs never reach the vehicle. On the unit the dynamic linker binds to the real
+libraries, because the SONAMEs match.
 
-```bash
-tools/pull-linkstubs.sh
-```
+If you would rather link against the real ones, fetch them from your own unit with
+`tools/pull-linkstubs.sh` — the build prefers them when present.

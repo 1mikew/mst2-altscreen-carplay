@@ -40,10 +40,12 @@ and it is a one-byte edit: exactly one instruction differs from stock, confirmed
 disassembling both.
 
 `navServices` and `ExboxGuidanceListenerImpl` are fields of that class but are never
-called from it, so they are a dead end *for the overlay*. They are worth a second look
-for something else: "Exbox" is external-box guidance, which means the HMI already has a
-route for navigation data that does not come from its own map. That is the direction for
-native cluster arrows driven from CarPlay — see [../ROADMAP.md](../ROADMAP.md).
+called from it — a dead end.
+
+They looked at first like a route for *external* navigation data, and therefore a way to
+drive native cluster arrows. Decompiling the image says otherwise: `ExboxGuidanceListener`
+carries a single `GuidanceState` (`ACTIVE` / `INACTIVE`). It arbitrates **who is
+navigating**, the phone or the built-in map. No manoeuvre data passes through it.
 
 ## Writing to the system partition
 

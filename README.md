@@ -28,7 +28,7 @@ CarPlay screen keeps running on the radio display. Two independent displays, one
 
 ## Status
 
-`✅ works` · `🟥 blocking` · `⬜ not yet`
+`✅ works` · `🟡 partly` · `⬜ not yet`
 
 | | |
 |---|---|
@@ -38,9 +38,9 @@ CarPlay screen keeps running on the radio display. Two independent displays, one
 | ✅ Route guidance | The cluster's "navigation is running on the phone" overlay is gone — see [docs/HMI-OVERLAY.md](docs/HMI-OVERLAY.md) |
 | 🟡 Layout / SafeArea | The app honours the SafeArea we advertise; the rectangle is still being calibrated, and the manoeuvre icon is oversized |
 | ⬜ Steering-wheel control | The wheel still zooms the stock map, not CarPlay |
-| ⬜ Navigation arrows | No native cluster widgets driven from CarPlay metadata |
+| ⛔ Navigation arrows | The cluster's own widgets cannot be driven: no CarPlay turn-by-turn data reaches the head unit |
 | ⬜ Cleanup on disconnect | Last frame stays until the cockpit view is switched |
-| ⬜ Frame rate | 10 fps measured; raising it untested |
+| ⬜ Frame rate | 10 fps — a constant in the HMI, not a negotiated limit. Raising it untested |
 
 Road-tested on one vehicle:
 
@@ -62,10 +62,12 @@ have a MIB2 Standard unit with shell access, see *Help wanted* in
 From the factory, MIB2 Standard shows the navigation map in **one place at a time** —
 cockpit **or** radio display — and only the built-in Škoda map.
 
-Getting CarPlay maps onto the Virtual Cockpit has been solved elsewhere, but **no public
-project covers MST / MIB2 Standard units**. The known work targets **Harman MHI2 ("High")**
-and cannot run here: MST2 has **no `/dev/mlb`** at all — MOST sits behind a second chip
-(TI Jacinto 5).
+Getting CarPlay maps onto the Virtual Cockpit has been solved elsewhere, but **only for
+Harman MHI2 ("High")**, which cannot run here: MST2 has **no `/dev/mlb`** at all — MOST
+sits behind a second chip (TI Jacinto 5).
+
+**No public project puts a third-party CarPlay map on the cluster of these units**, which
+is what this is for.
 
 The goal is a third-party map on the cluster, past what the unit does from the factory.
 **That limit is not hardware:** with both displays running, load is ~3 % of the quad-core,

@@ -1,4 +1,33 @@
-# Findings, constraints and dead ends
+# Findings
+
+## The 10 fps ceiling is a constant, not a negotiation
+
+`DisplayManager` logs `update rate set to 10`, which reads like something the cluster asked
+for. It is not. Decompiling `MIBHMI.jxe` shows the cluster sends a *mode*, and the head unit
+picks the number:
+
+```java
+// de.vw.mib.asl.internal.mostkombi.streamsink.usecases.ChangeDataRateSequence
+private void _stepChangeDataRate() {
+   switch (this.getStreamSinkDataRate()) {
+      case 0: this.getDisplayManagementService().setDataFrameRate(0);  break;
+      case 1: this.getDisplayManagementService().setDataFrameRate(1);  break;
+      case 2: this.getDisplayManagementService().setDataFrameRate(10);
+   }
+}
+```
+
+Mode 2 is "map visible"; 0 and 1 hide it. So 10 is a literal on the side we can reach, and
+`omonob` shadows this same class and reports 40 fps on MHI2.
+
+Untested here: whether the cluster and the MOST link accept more than 10 on MST2. The
+constant being reachable does not prove the panel will take it.
+
+## Manoeuvre layout is CarPlay's, not ours
+
+The navigation view is right-aligned on purpose. `omonob` documents the same behaviour on a
+different platform — *"non-navigation centered, navigation right"* — so it is how the phone
+draws the cluster view, not a mistake in the SafeArea we advertise., constraints and dead ends
 
 Platform constraints, approaches that failed, and the measurements behind both.
 

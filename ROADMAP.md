@@ -21,10 +21,10 @@ on one car; everything else is not done.
 | ✅ | **"Navigation on phone" overlay removed** | One instruction in `CarPlayModeHandling`; route guidance is visible. [docs/HMI-OVERLAY.md](docs/HMI-OVERLAY.md) |
 | ⬜ | Auto cleanup on disconnect | Last frame stays; both attempted fixes failed |
 | ⬜ | Extended road testing | Longer drives, connect/disconnect cycles, cold starts |
-| 🟡 | SafeArea / ViewArea *(fork)* | Advertised per session and honoured by the app; `tools/set-safearea.sh` tunes it without a rebuild. Rectangle not yet calibrated |
+| 🟡 | SafeArea / ViewArea *(fork)* | Honoured by the app and tunable from a file. Calibrated to `245 28 520 320`; centring still to be refined |
 | ⬜ | D2 tuning *(fork)* | Event-scoped recovery instead of the 1 s watchdog |
 | ⬜ | Steering-wheel view/zoom *(fork)* | Wheel currently zooms the stock map |
-| ⬜ | Native navigation arrows / RGI *(fork)* | Drive cluster widgets from CarPlay metadata over BAP NavSD |
+| 🔬 | Native navigation arrows / RGI *(fork)* | Drive cluster widgets from CarPlay metadata over BAP NavSD. Lead: `ExboxGuidanceListenerImpl` sits in the CarPlay package, so the HMI already has a path for *external* guidance |
 | 🔬 | **Test a higher frame rate** | 10 fps observed. Set by DisplayManager at FPK setup — head-unit side, where we have access, and 1/0 seen in other states. Worth testing; nothing says it cannot go higher |
 | ⬜ | Other firmware | Wanted, but only `P0480T` can be tested here — no other unit available |
 | ⛔ | `/dev/mlb` transport | No such device on this platform |
@@ -44,8 +44,9 @@ on one car; everything else is not done.
 
 The overlay is gone, so the picture can finally be judged on its own.
 
-1. 🟡 Calibrate the SafeArea rectangle against the cluster's dials
-2. ⬜ Make the advertised physical size file-tunable, to size the manoeuvre icon
+1. 🟡 Refine the SafeArea centring (usable value found, road test pending)
+2. 🔬 Trace the Exbox guidance path in `MIBHMI.jxe` — the way to native cluster arrows
+3. ⬜ Make the advertised physical size file-tunable, to size the manoeuvre icon
 3. ⬜ Auto cleanup when the phone disconnects
 4. ⬜ Extended road testing *(gate for everything below)*
 5. ⬜ D2 tuning *(fork)*

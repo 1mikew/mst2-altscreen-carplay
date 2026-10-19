@@ -7,6 +7,14 @@
 # the part you can see. The full canvas is still streamed -- only the layout
 # the phone chooses changes.
 #
+# Calibrated on the AID 10" cluster (canvas 1010x376):
+#
+#   tools/set-safearea.sh 245 28 520 320
+#
+# Wider loses the manoeuvre card under the right dial -- it is drawn at the edge of
+# the rectangle, so 700 hides it and 600 only just fits. 520 also survives the cluster
+# views that show more data. The file lives on /tsd/var, so it survives a reboot.
+#
 #   tools/set-safearea.sh <x> <y> <w> <h>   set the rectangle
 #   tools/set-safearea.sh show              print the current one
 #   tools/set-safearea.sh reset             back to the full canvas

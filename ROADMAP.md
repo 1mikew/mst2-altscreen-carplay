@@ -44,7 +44,9 @@ on one car; everything else is not done.
 
 The overlay is gone, so the picture can finally be judged on its own.
 
-1. 🟡 Refine the SafeArea centring (usable value found, road test pending)
+1. 🟡 Centre the navigation layout. Two routes, cheapest first: move the picture with
+   `set-output.sh`, or declare a different canvas. Evidence it is possible: the same
+   phone centres on an AID 12.3 cluster and right-aligns on the 10.5
 2. 🔬 Raise the cluster frame rate past the hard-coded 10
 3. ⬜ Make the advertised physical size file-tunable, to size the manoeuvre icon
 3. ⬜ Auto cleanup when the phone disconnects

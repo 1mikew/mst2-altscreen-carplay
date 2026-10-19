@@ -23,11 +23,29 @@ Mode 2 is "map visible"; 0 and 1 hide it. So 10 is a literal on the side we can 
 Untested here: whether the cluster and the MOST link accept more than 10 on MST2. The
 constant being reachable does not prove the panel will take it.
 
-## Manoeuvre layout is CarPlay's, not ours
+## The right-aligned navigation layout is not fixed
 
-The navigation view is right-aligned on purpose. `omonob` documents the same behaviour on a
-different platform — *"non-navigation centered, navigation right"* — so it is how the phone
-draws the cluster view, not a mistake in the SafeArea we advertise., constraints and dead ends
+With a route running, the phone pushes its content to the right of the canvas; without one
+it centres. That looked inherent to CarPlay's cluster view. It is not.
+
+`omonob` documents per-cluster behaviour: **AID 12.3 renders navigation centred, AID 10.5
+renders it right**. Same phone, same CarPlay, different result — so the layout depends on
+something the head unit declares about the display, not on the app alone.
+
+How that project achieves it is not known here and was not examined. The work below is our
+own, from our own measurements.
+
+This project targets the AID 10" (`5E0920790A`), the family where the content is
+right-aligned. Two routes to centring, untested:
+
+- **Move the picture.** The output URL takes `dstx`/`dstw`, changeable at runtime with
+  `tools/set-output.sh` — no rebuild, no reconnect. Shifting or scaling the decoded frame
+  pulls right-aligned content inward and shrinks the oversized manoeuvre icon with it. The
+  cost is clipped or unused area at the edges, where the dials sit anyway.
+- **Change what is declared.** If the 12.3/10.5 difference comes from the advertised canvas
+  or physical size, the fix is to declare different values and let the phone lay out
+  centred by itself. Those are `ALTSCREEN111_*` environment variables read once at startup,
+  so this needs them made file-tunable and a rebuild., constraints and dead ends
 
 Platform constraints, approaches that failed, and the measurements behind both.
 

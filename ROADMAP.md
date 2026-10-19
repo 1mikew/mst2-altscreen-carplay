@@ -18,11 +18,10 @@ on one car; everything else is not done.
 | ✅ | Persistence | Survives reboot, comes up on its own |
 | ✅ | Kill switch + stock restore | Session-local and permanent |
 | ✅ | Runtime reconfiguration | Geometry without rebooting the unit |
-| 🟥 | **"Navigation on phone" overlay** | Cluster covers the picture during route guidance — the one blocker for real use |
-| 🟡 | Removing that overlay | Bytecode analysis of `CarPlayModeHandling` |
+| ✅ | **"Navigation on phone" overlay removed** | One instruction in `CarPlayModeHandling`; route guidance is visible. [docs/HMI-OVERLAY.md](docs/HMI-OVERLAY.md) |
 | ⬜ | Auto cleanup on disconnect | Last frame stays; both attempted fixes failed |
 | ⬜ | Extended road testing | Longer drives, connect/disconnect cycles, cold starts |
-| ⬜ | SafeArea / ViewArea *(fork)* | Upstream P0; same canvas, session level. Needs a live route to calibrate against |
+| 🟡 | SafeArea / ViewArea *(fork)* | Advertised per session and honoured by the app; `tools/set-safearea.sh` tunes it without a rebuild. Rectangle not yet calibrated |
 | ⬜ | D2 tuning *(fork)* | Event-scoped recovery instead of the 1 s watchdog |
 | ⬜ | Steering-wheel view/zoom *(fork)* | Wheel currently zooms the stock map |
 | ⬜ | Native navigation arrows / RGI *(fork)* | Drive cluster widgets from CarPlay metadata over BAP NavSD |
@@ -38,16 +37,17 @@ on one car; everything else is not done.
 | After disconnect | Last frame remains; switching the cockpit view clears it |
 | Capture stall | Recoverable only by switching the cockpit view; the HMI owns the FPK connection |
 | Firmware | One build, one car |
+| Layout inside the SafeArea | The app places its own elements; we choose the rectangle, not the arrangement |
+| Manoeuvre icon | Oversized on the cluster. Physical size is advertised as 200×74 mm and is currently env-only, not file-tunable |
 
 ## Order of work
 
-Nothing is added until the current feature is stable and the overlay is gone — view
-controls on a covered picture cannot be evaluated.
+The overlay is gone, so the picture can finally be judged on its own.
 
-1. 🟥 Remove the "navigation on phone" overlay
-2. ⬜ Auto cleanup when the phone disconnects
-3. ⬜ Extended road testing *(gate for everything below)*
-4. ⬜ SafeArea / ViewArea *(fork)*
+1. 🟡 Calibrate the SafeArea rectangle against the cluster's dials
+2. ⬜ Make the advertised physical size file-tunable, to size the manoeuvre icon
+3. ⬜ Auto cleanup when the phone disconnects
+4. ⬜ Extended road testing *(gate for everything below)*
 5. ⬜ D2 tuning *(fork)*
 6. ⬜ Steering-wheel control *(fork)*
 7. ⬜ Native navigation arrows *(fork)*

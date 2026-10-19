@@ -35,8 +35,8 @@ CarPlay screen keeps running on the radio display. Two independent displays, one
 | ✅ Cockpit | CarPlay cluster navigation, decoded natively (1024×384) |
 | ✅ Radio display | Normal CarPlay, unaffected |
 | ✅ Apps | Apple Maps, Waze, Google Maps — seamless switching |
-| 🟥 Route guidance | The cluster covers the picture with "navigation is running on the phone" |
-| ⬜ Layout / SafeArea | Picture is composed blind — not calibrated against the cluster's own elements |
+| ✅ Route guidance | The cluster's "navigation is running on the phone" overlay is gone — see [docs/HMI-OVERLAY.md](docs/HMI-OVERLAY.md) |
+| 🟡 Layout / SafeArea | The app honours the SafeArea we advertise; the rectangle is still being calibrated, and the manoeuvre icon is oversized |
 | ⬜ Steering-wheel control | The wheel still zooms the stock map, not CarPlay |
 | ⬜ Navigation arrows | No native cluster widgets driven from CarPlay metadata |
 | ⬜ Cleanup on disconnect | Last frame stays until the cockpit view is switched |
@@ -89,6 +89,7 @@ The architecture transfers between platforms; the code does not.
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | how the picture reaches the cluster |
 | [docs/INSTALL.md](docs/INSTALL.md) | developer install, kill switch, uninstall |
 | [docs/PROTOCOL-MDEVPUSH.md](docs/PROTOCOL-MDEVPUSH.md) | the undocumented push protocol |
+| [docs/HMI-OVERLAY.md](docs/HMI-OVERLAY.md) | removing the cluster's "navigation on phone" overlay |
 | [docs/FINDINGS.md](docs/FINDINGS.md) | constraints, dead ends, corrections |
 
 ## Licence

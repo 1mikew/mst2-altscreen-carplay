@@ -34,6 +34,15 @@ decodes H.264 itself, which is what made the platform difference clear.
 
 Cross-check on the protocol side. Platform-specific parts do not transfer.
 
+## omonob, again — the control split
+
+The steering-wheel design followed in [docs/CLUSTER-ZOOM.md](docs/CLUSTER-ZOOM.md) is
+`omonob`'s: an HMI shadow class that only detects the request and emits a plain ASCII
+command over loopback UDP, with everything CarPlay-specific kept in a native process. The
+open-source control portion is GPL-3.0, same licence as this project. The detection half
+differs here — MST2 delivers the request over BAP rather than as key events — but the
+separation is theirs.
+
 ## Toolchain
 
 - **QNX 6.5 ARMv7 cross toolchain** — public `qnx65-armv7-toolchain` image (luka-dev).

@@ -23,7 +23,7 @@ on one car; everything else is not done.
 | ⬜ | Extended road testing | Longer drives, connect/disconnect cycles, cold starts |
 | 🟡 | SafeArea / ViewArea *(fork)* | Honoured by the app and tunable from a file. Calibrated to `245 28 520 320`; centring still to be refined |
 | ⬜ | D2 tuning *(fork)* | Event-scoped recovery instead of the 1 s watchdog |
-| ⬜ | Steering-wheel view/zoom *(fork)* | Wheel currently zooms the stock map |
+| 🟡 | Steering-wheel zoom | Request located: BAP NavSD `MapScale`, already decoded, step vs continuous distinguished. Open: the alt screen declares no input device, so there is nothing to send it to yet. [docs/CLUSTER-ZOOM.md](docs/CLUSTER-ZOOM.md) |
 | ⛔ | Native navigation arrows / RGI | The BAP NavSD sink exists (`ManeuverDescriptor`, `LaneGuidance`, `TurnToInfo`), but nothing found in the image feeds it from CarPlay — `ExboxGuidanceListener` carries a guidance *state*, not manoeuvre data. No turn-by-turn path to the head unit. Not planned |
 | 🔬 | **Raise the frame rate** | **Found.** The cluster sends a *mode* (0/1/2), not a rate; `ChangeDataRateSequence._stepChangeDataRate` maps mode 2 to a hard-coded `setDataFrameRate(10)`. That constant is the ceiling, and it is on the head unit where we have access. omonob shadows the same class and runs 40 fps on MHI2 |
 | ⬜ | Other firmware | Wanted, but only `P0480T` can be tested here — no other unit available |

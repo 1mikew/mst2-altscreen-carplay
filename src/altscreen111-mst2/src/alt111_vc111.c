@@ -66,6 +66,10 @@ extern void strm_dict_destroy(strm_dict_t *);
 #define V_PROLOG_P  V_DIR "cpvc_111.prologue"
 #define V_OFF       "/tmp/cpvc_off"
 #define V_OFF_P     V_DIR "off"
+/* Optional splash: one self-contained Annex-B keyframe (SPS+PPS+IDR), built by
+ * tools/make-splash.py. Without the file nothing below changes behaviour at all. */
+#define V_SPLASH    "/tmp/cpvc_splash.h264"
+#define V_SPLASH_P  V_DIR "splash.h264"
 
 /* returns the first path that exists, or NULL */
 static const char *v_pick(const char *a, const char *b)
@@ -371,6 +375,74 @@ static size_t v_build_avcc(uint8_t *out, size_t outmax)
     return need;
 }
 
+/* ---- splash ------------------------------------------------------------- */
+/* The decoder shows nothing until it is handed a keyframe, and Type-111 sends one only
+ * about every 29 s. So we keep one of our own: it fills the gap after a connect, and it
+ * is the only thing that clears the frame left frozen on the cockpit when the phone goes
+ * away -- shrinking or destroying the window was tried and does not work here.
+ * The splash runs in its own context, primed from its own SPS/PPS; the real stream has
+ * different ones, so the first genuine IDR tears this down and starts over. */
+static int v_splash_on;                       /* the running context is showing the splash */
+
+static int v_splash_show(const char *out_url)
+{
+    static uint8_t buf[65536];
+    const uint8_t *sps = NULL, *pps = NULL, *idr = NULL;
+    size_t sps_n = 0, pps_n = 0, idr_n = 0, got;
+    uint8_t cfg[256];
+    size_t cfg_n, p;
+    const char *path = v_pick(V_SPLASH, V_SPLASH_P);
+    FILE *f;
+
+    if (!path) return -1;
+    f = fopen(path, "rb");
+    if (!f) return -1;
+    got = fread(buf, 1, sizeof(buf), f);
+    fclose(f);
+    if (got < 8) return -1;
+
+    /* Walk the Annex-B units and keep the three that matter. */
+    p = 0;
+    while (p + 3 <= got) {
+        size_t st, end;
+        if (!(buf[p] == 0 && buf[p+1] == 0 && buf[p+2] == 1)) { p++; continue; }
+        st = p + 3;
+        end = st;
+        while (end + 3 <= got && !(buf[end] == 0 && buf[end+1] == 0 && buf[end+2] == 1)) end++;
+        if (end + 3 > got) end = got;
+        while (end > st && buf[end-1] == 0) end--;      /* trailing zero padding */
+        if (end > st) {
+            unsigned t = buf[st] & 0x1fu;
+            if (t == 7)      { sps = buf + st; sps_n = end - st; }
+            else if (t == 8) { pps = buf + st; pps_n = end - st; }
+            else if (t == 5) { idr = buf + st; idr_n = end - st; }
+        }
+        p = end;
+    }
+    if (!sps || !pps || !idr || sps_n < 4) {
+        v_log("splash %s is unusable (SPS=%u PPS=%u IDR=%u)",
+              path, (unsigned)sps_n, (unsigned)pps_n, (unsigned)idr_n);
+        return -1;
+    }
+
+    cfg_n = 6 + 2 + sps_n + 1 + 2 + pps_n;
+    if (cfg_n > sizeof(cfg)) return -1;
+    cfg[0] = 1; cfg[1] = sps[1]; cfg[2] = sps[2]; cfg[3] = sps[3];
+    cfg[4] = 0xff; cfg[5] = 0xe1;
+    cfg[6] = (uint8_t)(sps_n >> 8); cfg[7] = (uint8_t)sps_n;
+    memcpy(cfg + 8, sps, sps_n);
+    cfg[8 + sps_n] = 1;
+    cfg[9 + sps_n] = (uint8_t)(pps_n >> 8); cfg[10 + sps_n] = (uint8_t)pps_n;
+    memcpy(cfg + 11 + sps_n, pps, pps_n);
+
+    v_teardown();
+    if (v_setup(out_url, cfg, cfg_n) < 0) { v_teardown(); return -1; }
+    if (v_push_nal(idr, (uint32_t)idr_n, v_now_us()) < 0) { v_teardown(); return -1; }
+    v_splash_on = 1;
+    v_log("splash shown from %s (%u B keyframe)", path, (unsigned)idr_n);
+    return 0;
+}
+
 /* ---- watchdog: cockpit composition has stalled --------------------------- */
 /* DisplayManager only captures dpy-6 when Screen reports a change; otherwise its loop
   * sits in screen_get_event and times out every 2 s. Our window rides a hardware video
@@ -485,10 +557,17 @@ void vc111_idle_tick(void)
 {
     if (v_state != 1 || !v_last_feed) return;
     if (time(NULL) - v_last_feed < V_IDLE_S) return;
-    /* DISABLED FOR NOW: runtime geometry changes do not work here (mmr_output_detach
-     * fails on a playing context) and destroying the window wedges DisplayManager. So
-     * after the phone disconnects the last frame stays on the cockpit, and switching the
-     * cockpit view brings the map back. See ROADMAP.md. */
+    /* The phone is gone and the cockpit is holding its last frame. Replacing it with the
+     * splash is what finally works: shrinking the window fails (mmr_output_detach is
+     * refused on a playing context) and destroying it wedges DisplayManager. */
+    if (!v_splash_on) {
+        char url[768];
+        const char *out = v_cfg(url, sizeof(url));
+        if (out && v_splash_show(out) == 0) {
+            v_log("no frames for %d s (phone disconnected?) -> splash", V_IDLE_S);
+            return;
+        }
+    }
     if (1) return;
     if (v_hidden || v_hide_broken) return;
     v_hidden = 1;
@@ -525,6 +604,11 @@ void vc111_feed(const uint8_t *au, size_t n, unsigned nal_len_size,
 
     if (v_state < 0) return;                       /* natrvalo vypnuto */
     if (!au || !n) return;
+    if (v_splash_on && idr) {
+        /* The stream has its own parameter sets; keep nothing of ours. */
+        v_log("stream keyframe -> dropping the splash");
+        v_teardown(); v_splash_on = 0;
+    }
     v_last_feed = time(NULL);
     v_scan_params(au, n);
     if (v_hidden && v_state == 1) {               /* frames are back -> cover the cockpit again */
@@ -565,6 +649,18 @@ void vc111_feed(const uint8_t *au, size_t n, unsigned nal_len_size,
                 last_req = now;
                 k = fopen(V_KEYFRAME, "w");
                 if (k) { fclose(k); v_log("waiting for a keyframe; requesting one"); }
+            }
+            /* Cover the wait with our own picture rather than whatever the cockpit is
+             * still holding. Only once DisplayManager is capturing -- same reason as the
+             * real start below. */
+            if (!v_splash_on) {
+                int snima = -1;
+                (void)v_dpy_counter(&snima);
+                if (snima == 1) {
+                    char url[768];
+                    const char *out = v_cfg(url, sizeof(url));
+                    if (out) (void)v_splash_show(out);
+                }
             }
             v_tick++; return;
         }

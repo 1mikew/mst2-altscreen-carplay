@@ -53,6 +53,9 @@ tools/unit.py "pidin -p tsd.mibstd2.sal.main mem | grep altscreen"
 tools/persist.sh        # survives reboot, enables the keyframe policy
 tools/set-output.sh …   # experiments: writes to /tmp, wins, cleared on reboot
 tools/set-safearea.sh … # which part of the cluster canvas the phone may draw in
+tools/set-surface.sh …  # map only, or map plus the manoeuvre card
+tools/make-splash.py    # build a keyframe of our own
+tools/set-splash.sh     # ... and put it on the unit (leave it off to keep stock behaviour)
 ```
 
 Nothing has to be exported from the unit for this. The decoder initialisation is built

@@ -193,3 +193,25 @@ reasoned out.
 | Appearance parameters (`maneuverLayout`, `showETA`) | Cluster blanks as soon as a route starts |
 
 Removing the manoeuvre card needs the `map` surface. Nothing else does it.
+
+
+## The splash, and why it is a keyframe
+
+The decoder emits nothing until it is given a keyframe, and Type-111 sends one only about
+every 29 s. Two things follow from that single fact: the cockpit stays blank for 10–30 s
+after connecting, and when the phone goes away the last frame it sent stays on the cluster
+for good.
+
+Both are the same problem, so both get the same answer — a keyframe of our own:
+
+```bash
+tools/make-splash.py        # one Annex-B IDR with its own SPS/PPS, ~1.3 kB
+tools/set-splash.sh         # onto the unit; remove it to disable the feature entirely
+```
+
+It runs in its own context, primed from its own parameter sets, because the stream's are
+different. The first genuine keyframe tears it down and the real picture takes over.
+
+Shrinking the window to hide it was tried first and does not work — `mmr_output_detach`
+is refused on a playing context — and destroying the window wedges DisplayManager. The
+splash sidesteps both: the window never changes, only its contents.

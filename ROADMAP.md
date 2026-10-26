@@ -19,8 +19,8 @@ on one car; everything else is not done.
 | ✅ | Kill switch + stock restore | Session-local and permanent |
 | ✅ | Runtime reconfiguration | Geometry without rebooting the unit |
 | ✅ | **"Navigation on phone" overlay removed** | One instruction in `CarPlayModeHandling`; route guidance is visible. [docs/HMI-OVERLAY.md](docs/HMI-OVERLAY.md) |
-| ⬜ | Auto cleanup on disconnect | Last frame stays; both attempted fixes failed |
-| 🔬 | **Splash frame of our own** | A picture we push ourselves, instead of waiting. It would cover the 10–30 s startup gap, and the same mechanism would clear the stale last frame after a disconnect — the one thing two attempts have failed at. Cost: the decoder is initialised from the live stream's SPS/PPS, so a synthetic frame needs its own init and a re-init when the real stream starts |
+| 🟡 | Auto cleanup on disconnect | Shrinking and destroying the window both failed. The splash replaces the frame instead — written, untested |
+| 🟡 | **Splash frame of our own** | Written, builds clean, not yet tried in the car. Covers the startup gap and replaces the frame left frozen after a disconnect. Its own context primed from its own SPS/PPS; the first real keyframe drops it. Off unless the file is present |
 | 🔬 | Startup delay and mid-drive freezes | 10–30 s to first picture, and brief freezes that recover by themselves. Both plausibly wait on the same thing — an IDR, which Type-111 sends about every 29 s — but the logs already show a resync completing in ~150 ms, so that is a hypothesis, not a diagnosis. Measure before changing anything |
 | ⬜ | Extended road testing | Longer drives, connect/disconnect cycles, cold starts |
 | 🟡 | SafeArea / ViewArea *(fork)* | Honoured by the app and tunable from a file. Calibrated to `245 28 520 320`; centring still to be refined |

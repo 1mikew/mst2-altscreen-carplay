@@ -105,3 +105,28 @@ Platform constraints, approaches that failed, and the measurements behind both.
 | `error::5` after exactly 3 NALs | Missing initialisation sequence. |
 | Cockpit image stutters at ~2 fps | Our window covers the stock content completely; leave a pixel. |
 | iPhone reports an incompatibility | A second output was attached to SAL's own context. |
+
+
+## Measuring the startup delay and the freezes
+
+Both are timing questions, and the library already logs enough to answer them without
+adding anything. In `/tmp/altscreen111.log`:
+
+```
+GEN2 D2 ARM ...        a resync was armed, with the reason
+GEN2 RESYNC REQUEST ...  a keyframe was asked for
+GEN2 RESYNC COMPLETE ... one arrived
+```
+
+The gap between REQUEST and COMPLETE is the real cost of waiting for an IDR. One sample
+taken after a reboot was about 150 ms, which is far too quick to explain a 10–30 s startup
+delay — so something else dominates there. The sink's own log also reports what it is
+waiting for:
+
+```
+waiting until DisplayManager starts capturing the cockpit (capture buffer = none)
+waiting for a keyframe - requesting one
+```
+
+Those two lines separate the two candidates: the cluster view not yet being on the map, and
+the keyframe itself. Read them before concluding anything.

@@ -40,16 +40,16 @@ on one car; everything else is not done.
 | Mid-drive freeze | The cluster picture stops for a few seconds while the phone keeps navigating normally, then catches up on its own. Not always fatal, so the earlier "only a view switch recovers it" was too absolute |
 | Startup delay | 10–30 s from connecting the phone to a picture on the cluster |
 | Firmware | One build, one car |
-| Layout inside the SafeArea | The app places its own elements; we choose the rectangle, not the arrangement |
+| Layout inside the SafeArea | The rectangle's *position* is the only working lever, and it works as an offset. `maneuverLayout` blanks the cluster |
 | Manoeuvre card | Not shown on the cluster by choice — the map-only surface is the target. The card stays on the radio display |
 
 ## Order of work
 
 The overlay is gone, so the picture can finally be judged on its own.
 
-1. 🟡 Road-test the map-only surface (`tools/set-surface.sh map`). If the route still
-   draws and the layout centres, that is the intended configuration and the
-   right-alignment problem disappears with the card
+1. ✅ Cluster layout — settled 26 Oct. `map` surface, SafeArea `0 28 700 320`. The
+   rectangle works as an offset against the phone's right bias, not as a frame to centre
+   content inside. Manoeuvre card deliberately left on the radio display
 2. 🔬 Measure the startup delay and the freezes before touching D2
 3. 🔬 Raise the cluster frame rate past the hard-coded 10
 3. ⬜ Auto cleanup when the phone disconnects

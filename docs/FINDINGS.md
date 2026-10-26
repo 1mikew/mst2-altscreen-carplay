@@ -38,7 +38,16 @@ own, from our own measurements.
 This project targets the AID 10" (`5E0920790A`), the family where the content is
 right-aligned.
 
-**The intended answer is to not show the card at all.** CarPlay offers the cluster as three
+**The card's position is settable.** The surface URL takes query parameters, and
+`maneuverLayout` accepts `leftAligned`, `rightAligned` and `topAligned`. They are off by
+default — the URL is sent bare unless enabled — which is why the card has only ever been
+seen where the phone chose to put it. `tools/set-nav-appearance.sh`. On a canvas this wide
+and short, `topAligned` is the one worth trying. Untested.
+
+Earlier notes here said the arrangement inside the SafeArea could not be influenced. That
+was wrong: the rectangle is not the only lever.
+
+**The intended answer is still to not show the card at all.** CarPlay offers the cluster as three
 surfaces — `maps:/car/instrumentcluster`, `.../map` and `.../instructioncard` — and the
 map-only one is laid out as if no route were active, so it centres. The route still draws
 in the map; only the separate manoeuvre card goes away, and that is already on the radio
@@ -121,3 +130,66 @@ waiting for a keyframe - requesting one
 
 Those two lines separate the two candidates: the cluster view not yet being on the map, and
 the keyframe itself. Read them before concluding anything.
+
+
+## The appearance parameters blank the cluster
+
+Tried in the car, 26 Oct 2026. The cluster went black as soon as route guidance started,
+and the bare URL brought it straight back.
+
+What went out:
+
+```
+url=maps:/car/instrumentcluster?showSpeedLimit=user&showCompass=user&showETA=yes&maneuverLayout=topAligned
+```
+
+Nothing failed on our side — no error was logged and the session stayed up. The phone
+simply stopped producing frames: the push rate fell from about 27 a second to 2.4, which is
+what a black screen looks like from here.
+
+Note that **all four parameters are always sent**. Setting two of them still emits the
+other two with a default of `user`. An untested but plausible explanation is that `user` is
+not a value the protocol accepts, and one bad parameter invalidates the whole URL — which
+would explain losing the picture entirely rather than just losing the manoeuvre bar.
+
+A narrower attempt is possible — explicit `yes`/`no` everywhere and no `maneuverLayout` —
+but each try costs a reconnect, and the bare URL already does what matters.
+
+One harmless side effect: Waze rearranged its own layout on the radio display and stayed
+that way for the session. Route guidance and position were unaffected.
+
+
+## Centring: the SafeArea is an offset, not a frame
+
+Solved 26 Oct 2026, and not the way it was being attempted.
+
+With a route running, the phone holds its content against the **right** of the SafeArea,
+whatever the rectangle is. Widening the rectangle does not centre anything and does not
+push the manoeuvre card out of sight either — going from 700 to 800 wide moved the card by
+about a tenth of its own width.
+
+The lever is the rectangle's **position**. Offsetting the zone to the left cancels the
+right bias:
+
+```bash
+tools/set-surface.sh map             # no manoeuvre card
+tools/set-safearea.sh 0 28 700 320   # zone 0-700, centred at 350 against a canvas centre of 505
+```
+
+The zone sits 155 px left of centre, the content sits right inside it, and the result lands
+centred on the cluster. Vehicle-tested.
+
+This also explains the "perfect centre" seen on 19 Oct at `155 28 700 320` and never
+reproduced afterwards: it was a coincidence of offset and width, not a setting anyone had
+reasoned out.
+
+### What does not work
+
+| attempt | result |
+|---|---|
+| Widening the SafeArea to hide the manoeuvre card | Card barely moves; it is not anchored to the zone edge |
+| `map` surface alone | Removes the card, but the content stays right |
+| Negative `dstx` to shift our own window | QNX will not place the window off-display — black cluster |
+| Appearance parameters (`maneuverLayout`, `showETA`) | Cluster blanks as soon as a route starts |
+
+Removing the manoeuvre card needs the `map` surface. Nothing else does it.

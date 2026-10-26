@@ -68,8 +68,17 @@ remove_key(alt,"primaryInputDevice");
 ```
 
 which is why `/info` reports `input=none`. Until that changes, the phone has no reason to
-accept anything. What to send after that is open, and is the real work: the stock value is
-logged at startup (`stock display capability baseline`) and is the obvious starting point.
+accept anything.
+
+The obvious next step was to copy whatever the stock display declares. That turns out not
+to exist — the baseline logged at startup reads:
+
+```
+stock display capability baseline: features=10 primaryInputDevice=<absent>
+```
+
+So there is no value to crib. Either the cluster's input path is not `primaryInputDevice`
+at all, or it has to be invented, which is a different and riskier exercise.
 
 ## Shape of the implementation
 

@@ -59,3 +59,32 @@ The jar lives on the read-only root. Two things cost real time here:
 
 Keep a copy of the stock jar before writing, on the separate writable partition
 (`/tsd/var/`), not on root.
+
+
+## Raising the cluster frame rate
+
+The same override jar carries this too. The cluster asks for a *mode*, and the head unit
+picks the number:
+
+```java
+// de.vw.mib.asl.internal.mostkombi.streamsink.usecases.ChangeDataRateSequence
+case 2: getDisplayManagementService().setDataFrameRate(10);   // map visible
+```
+
+It is a `bipush`, so the ceiling is one byte and anything up to 127 fits. Nothing else in
+that class pushes 10, which is what makes the site safe to find.
+
+```bash
+tools/make-fps-patch.py ChangeDataRateSequence.class 30
+tools/set-cluster-fps.sh ChangeDataRateSequence.patched.class
+# reboot, then: tools/set-cluster-fps.sh off   to go back
+```
+
+The class comes from your own unit — `/tsd/hmi/ifs/MIBHMI.jxe` converted with jxe2jar.
+Unlike `CarPlayModeHandling`, this one is not already in the jar, so it is added: the jar
+is downloaded, edited here, and written back whole, and `set-cluster-fps.sh` reads it back
+afterwards and compares.
+
+**Untested.** The constant is reachable; whether the cluster and the MOST link accept more
+than 10 is a separate question nobody has answered on MST2. If it does not, the picture
+may stutter or stop rather than politely stay at 10 — so try it parked, not on a drive.

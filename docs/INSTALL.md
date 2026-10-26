@@ -57,6 +57,8 @@ tools/set-surface.sh …  # map only, or map plus the manoeuvre card
 tools/make-splash.py    # build a keyframe of our own
 tools/set-splash.sh     # ... and put it on the unit (leave it off to keep stock behaviour)
 tools/set-on-disconnect.sh …  # keep the last frame, show the splash, or release the cockpit
+tools/make-fps-patch.py …     # raise the cluster frame rate (HMI class, needs a reboot)
+tools/set-cluster-fps.sh …    # ... and put it in the override jar, or take it out
 ```
 
 Nothing has to be exported from the unit for this. The decoder initialisation is built

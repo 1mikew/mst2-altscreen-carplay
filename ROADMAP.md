@@ -28,7 +28,7 @@ on one car; everything else is not done.
 | ⬜ | D2 tuning *(fork)* | Event-scoped recovery instead of the 1 s watchdog |
 | 🟡 | Steering-wheel zoom | **Both halves known, including the values.** In: BAP NavSD `MapScale`, decoded, step vs continuous. Out: `changeMapZoomLevel` with `uuid` and `zoomDirection` (0 in, 1 out), paced one step at a time, no acknowledgement. Needs writing. [docs/CLUSTER-ZOOM.md](docs/CLUSTER-ZOOM.md) |
 | ⛔ | Native navigation arrows / RGI | The BAP NavSD sink exists (`ManeuverDescriptor`, `LaneGuidance`, `TurnToInfo`), but nothing found in the image feeds it from CarPlay — `ExboxGuidanceListener` carries a guidance *state*, not manoeuvre data. No turn-by-turn path to the head unit. Not planned |
-| 🔬 | **Raise the frame rate** | **Found.** The cluster sends a *mode* (0/1/2), not a rate; `ChangeDataRateSequence._stepChangeDataRate` maps mode 2 to a hard-coded `setDataFrameRate(10)`. That constant is the ceiling, and it is on the head unit where we have access. omonob shadows the same class and runs 40 fps on MHI2 |
+| 🟡 | **Raise the frame rate** | The cluster sends a *mode*, not a rate: `ChangeDataRateSequence` maps mode 2 to a hard-coded `setDataFrameRate(10)`. Tooling ready — `make-fps-patch.py` flips the byte, `set-cluster-fps.sh` puts it in the override jar and verifies it. Whether the cluster accepts more is still unanswered; try it parked |
 | ⬜ | Other firmware | Wanted, but only `P0480T` can be tested here — no other unit available |
 | ⛔ | `/dev/mlb` transport | No such device on this platform |
 
@@ -52,15 +52,15 @@ The overlay is gone, so the picture can finally be judged on its own.
    rectangle works as an offset against the phone's right bias, not as a frame to centre
    content inside. Manoeuvre card deliberately left on the radio display
 2. 🔬 Measure the startup delay and the freezes before touching D2
-3. 🔬 Raise the cluster frame rate past the hard-coded 10
+3. 🟡 Raise the cluster frame rate past the hard-coded 10 — tooling ready, needs a car
 3. ⬜ Auto cleanup when the phone disconnects
 4. ⬜ Extended road testing *(gate for everything below)*
 5. ⬜ D2 tuning *(fork)*
 6. ⬜ Steering-wheel control *(fork)*
 7. ⬜ Native navigation arrows *(fork)*
-8. 🔬 **Test a higher frame rate.** Angles: where DisplayManager takes the value from at
-   FPK setup, whether the advertised `maxFPS` matters (the hook already has a runtime
-   override), and upstream's Continental FPK research
+8. ⬜ **If the cluster refuses a higher rate**, the remaining angles are the advertised
+   `maxFPS` (the hook already has a runtime override) and upstream's Continental FPK
+   research
 9. ⬜ **Broader firmware coverage.** Blocked on access, not on design: most of the work is
    firmware-independent. Needs people with other units
 

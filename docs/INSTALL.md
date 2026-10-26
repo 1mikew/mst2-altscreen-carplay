@@ -47,6 +47,18 @@ Needs the system partition remounted read-write (`util_mount.sh` / `util_mount_r
 tools/unit.py "pidin -p tsd.mibstd2.sal.main mem | grep altscreen"
 ```
 
+## Before changing anything
+
+```bash
+tools/backup-unit.sh            # library, HMI jar and every config file, with restore notes
+```
+
+The library running on a unit is whatever was last deployed to it, which need not match
+any commit here — and the only copy of it is on the car. Take the backup first; it writes
+`RESTORE.md` next to the files.
+
+Tagged states that were driven and verified are in `git tag -n`.
+
 ## Configure
 
 ```bash

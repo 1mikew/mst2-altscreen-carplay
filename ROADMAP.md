@@ -46,9 +46,13 @@ on one car; everything else is not done.
 
 The overlay is gone, so the picture can finally be judged on its own.
 
-1. 🟡 Road-test the map-only surface (`tools/set-surface.sh map`). If the route still
-   draws and the layout centres, that is the intended configuration and the
-   right-alignment problem disappears with the card
+1. 🟡 Cluster layout, in priority order. **A centred map is the requirement**; everything
+   else is optional and must not cost it.
+   - Keep the centred map — already working, SafeArea `245 28 520 320`
+   - Try a slim manoeuvre bar and ETA on top of it: `maneuver top`, `eta yes`. These
+     appearance parameters ship switched off, so they are untried here
+   - If they cost the centring, drop them. The manoeuvre card is on the radio display
+     anyway, and the map-only surface (`set-surface.sh map`) is the fallback
 2. 🔬 Measure the startup delay and the freezes before touching D2
 3. 🔬 Raise the cluster frame rate past the hard-coded 10
 3. ⬜ Auto cleanup when the phone disconnects

@@ -7,3 +7,6 @@ captures/*
 # vendor firmware libraries -- fetch from your own unit, never redistribute
 src/linkstubs/*.so*
 .work/
+
+# local reference material, not ours to redistribute
+reference/

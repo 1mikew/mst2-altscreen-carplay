@@ -48,7 +48,10 @@ on one car; everything else is not done.
 
 The overlay is gone, so the picture can finally be judged on its own.
 
-1. ✅ Cluster layout — settled 26 Oct. `map` surface, SafeArea `0 28 700 320`. The
+1. 🟡 Cluster layout — centred while guiding, driven 26 Oct. Idle sits 155 px left,
+   because the phone centres in the rectangle when it has no route to push right. Two
+   view areas now declared and switched on the guidance mode — untested.
+   Previously: ✅ for the guiding case — `map` surface, SafeArea `0 28 700 320`. The
    rectangle works as an offset against the phone's right bias, not as a frame to centre
    content inside. Manoeuvre card deliberately left on the radio display
 2. 🔬 Measure the startup delay and the freezes before touching D2

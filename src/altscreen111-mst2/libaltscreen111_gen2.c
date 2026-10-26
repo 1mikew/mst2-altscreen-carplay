@@ -268,6 +268,18 @@ static int g_auto_show = 0;
 static int g_viewareas = 1;
 static const char *g_viewareas_marker = MIBR_PERSIST_DIR "mibr-carplay111-viewareas.enabled";
 static const char *g_safearea_config_path = MIBR_PERSIST_DIR "mibr-carplay111-safearea.conf";
+/* The phone lays the cluster out differently depending on whether a route is running:
+ * centred in the zone when idle, pushed right when guiding. One rectangle cannot suit
+ * both, so a second one may be given for the guiding case and the two are declared as
+ * separate view areas, switched as the mode changes. Without this file nothing changes. */
+static const char *g_safearea_nav_path = MIBR_PERSIST_DIR "mibr-carplay111-safearea-nav.conf";
+static int g_view_nav = -1;          /* which view index is the guiding one, -1 = none */
+/* What value of the mode-state "turns" field means the phone is guiding. 2 matches the
+ * convention the HMI uses elsewhere (CarPlay = 2), but it is logged on every change,
+ * so it can be read off the unit and corrected without a rebuild. */
+static int g_turns_active = 2;
+static const char *g_turns_active_path = MIBR_PERSIST_DIR "mibr-carplay111-turns-active";
+
 static const char *g_autoshow_disable_marker = MIBR_PERSIST_DIR "mibr-carplay111-autoshow.disabled";
 static const char *g_url_map_marker = MIBR_PERSIST_DIR "mibr-carplay111-url-map.enabled";
 static const char *g_url_mode_path = "/tmp/mibr-alt111-url-mode";
@@ -577,36 +589,41 @@ static int read_trimmed_value(const char *path, char *out, size_t cap)
     return n > 0 ? 0 : -1;
 }
 
-static void load_safearea_config(int *x, int *y, int *w, int *h)
+static int load_safearea_from(const char *path, int *x, int *y, int *w, int *h)
 {
     char b[192];
     int fd, n;
     int tx=0, ty=0, tw=g_width, th=g_height;
 
-    if(!x||!y||!w||!h) return;
+    if(!x||!y||!w||!h) return -1;
     *x=0; *y=0; *w=g_width; *h=g_height;
 
-    fd=open(g_safearea_config_path,O_RDONLY);
-    if(fd<0) return;
+    fd=open(path,O_RDONLY);
+    if(fd<0) return -1;
     n=(int)read(fd,b,sizeof(b)-1u);
     close(fd);
-    if(n<=0) return;
+    if(n<=0) return -1;
     b[n]='\0';
 
     if(sscanf(b,"x=%d\ny=%d\nw=%d\nh=%d",&tx,&ty,&tw,&th)!=4){
-        logf_u2("GEN2 SafeArea config invalid path=%s; using full canvas",
-                g_safearea_config_path);
-        return;
+        logf_u2("GEN2 SafeArea config invalid path=%s; using full canvas", path);
+        return -1;
     }
 
     if(tx<0||ty<0||tw<1||th<1||tx>=g_width||ty>=g_height||
        tx+tw>g_width||ty+th>g_height){
         logf_u2("GEN2 SafeArea config out-of-range x=%d y=%d w=%d h=%d full=%dx%d; using full canvas",
                 tx,ty,tw,th,g_width,g_height);
-        return;
+        return -1;
     }
 
     *x=tx; *y=ty; *w=tw; *h=th;
+    return 0;
+}
+
+static void load_safearea_config(int *x, int *y, int *w, int *h)
+{
+    (void)load_safearea_from(g_safearea_config_path,x,y,w,h);
 }
 
 static const char *nav_surface_url(char *surface, size_t surface_cap)
@@ -1912,12 +1929,43 @@ static void add_reference_viewarea(CFMutableDictionaryRef alt)
     p_CFRelease(k); k=NULL;
 
     p_CFArrayAppendValue(areas,view);
+
+    /* Optional second area, used while the phone is guiding. */
+    g_view_nav=-1;
+    {
+        int nx,ny,nw,nh;
+        if(load_safearea_from(g_safearea_nav_path,&nx,&ny,&nw,&nh)==0){
+            CFMutableDictionaryRef v2=dict_new(), s2=dict_new();
+            if(v2&&s2){
+                CFStringRef kk;
+                set_i64(v2,"widthPixels",g_width);
+                set_i64(v2,"heightPixels",g_height);
+                set_i64(v2,"originXPixels",0);
+                set_i64(v2,"originYPixels",0);
+                set_i64(s2,"widthPixels",nw);
+                set_i64(s2,"heightPixels",nh);
+                set_i64(s2,"originXPixels",nx);
+                set_i64(s2,"originYPixels",ny);
+                set_false(v2,"drawUIOutsideSafeArea");
+                set_false(v2,"viewAreaTransitionControl");
+                kk=s_cf("safeArea");
+                p_CFDictionarySetValue(v2,kk,s2);
+                p_CFRelease(kk);
+                p_CFArrayAppendValue(areas,v2);
+                g_view_nav=1;
+                logf_u2("GEN2 ViewArea[1] guiding safe=%dx%d@%d,%d",nw,nh,nx,ny);
+            }
+            if(s2)p_CFRelease(s2);
+            if(v2)p_CFRelease(v2);
+        }
+    }
+
     k=s_cf("viewAreas");
     p_CFDictionarySetValue(alt,k,areas);
     p_CFRelease(k); k=NULL;
     set_i64(alt,"initialViewArea",0);
-    logf_u2("GEN2 ViewArea full=%dx%d safe=%dx%d@%d,%d",
-            g_width,g_height,safe_w,safe_h,safe_x,safe_y);
+    logf_u2("GEN2 ViewArea[0] full=%dx%d safe=%dx%d@%d,%d views=%d",
+            g_width,g_height,safe_w,safe_h,safe_x,safe_y,g_view_nav>0?2:1);
 
 done:
     if(k)p_CFRelease(k);
@@ -3179,6 +3227,17 @@ static OSStatus mibr_session_control(AirPlayReceiverSessionRef session, uint32_t
                 private111_active);
         if(prc==K_NO_ERR && previous_valid && (delta & (1u<<5)))
             gen2_d2_schedule(G2_D2_SOURCE_TURNS,"turns-edge");
+        /* Guidance started or stopped: move to the view area that suits it. The phone
+         * centres its content when idle and pushes it right while guiding, so the two
+         * need different rectangles. */
+        if(prc==K_NO_ERR && (delta & (1u<<5)) && g_view_nav>0){
+            unsigned want=(parsed.turns>=g_turns_active)?1u:0u;
+            pthread_mutex_lock(&g2_core_lock);
+            (void)alt111_control_intent(&g2_control,1,want);
+            pthread_cond_broadcast(&g2_core_cv);
+            pthread_mutex_unlock(&g2_core_lock);
+            logf_u2("GEN2 guidance turns=%d -> viewArea %u",parsed.turns,want);
+        }
         gen2_publish_status();
     }
 
@@ -3569,6 +3628,24 @@ static void altscreen111_init(void)
     g2_profile.views[0].area.width=g2_profile.width;
     g2_profile.views[0].area.height=g2_profile.height;
     g2_profile.views[0].safe=g2_profile.views[0].area;
+    /* A second view area exists only when a guiding rectangle is configured; the control
+     * state machine refuses a view index outside view_count, so the two must agree. */
+    {
+        int nx,ny,nw,nh;
+        if(load_safearea_from(g_safearea_nav_path,&nx,&ny,&nw,&nh)==0 &&
+           g2_profile.view_count < ALT111_MAX_VIEWS){
+            g2_profile.views[1]=g2_profile.views[0];
+            g2_profile.view_count=2;
+        }
+    }
+    g_turns_active=env_i("ALTSCREEN111_TURNS_ACTIVE",2);
+    {
+        char v[32];
+        if(read_trimmed_value(g_turns_active_path,v,sizeof(v))==0){
+            int t=atoi(v);
+            if(t>0) g_turns_active=t;
+        }
+    }
     if(alt111_profile_validate(&g2_profile)!=ALT111_OK){
         g_enabled=0;
         logf_u2("gen2 runtime profile validation failed; disabled fail-closed");

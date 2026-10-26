@@ -37,7 +37,7 @@ CarPlay screen keeps running on the radio display. Two independent displays, one
 | ✅ Radio display | Normal CarPlay, unaffected |
 | ✅ Apps | Apple Maps, Waze, Google Maps — seamless switching |
 | ✅ Route guidance | The cluster's "navigation is running on the phone" overlay is gone — see [docs/HMI-OVERLAY.md](docs/HMI-OVERLAY.md) |
-| ✅ Layout | Map-only cluster surface, centred. The manoeuvre card stays on the radio display by choice |
+| ✅ Layout | Map-only cluster surface, centred — road-tested. The manoeuvre card stays on the radio display by choice |
 | 🟡 Steering-wheel control | The wheel still zooms the stock map. Where its request arrives is known — see [docs/CLUSTER-ZOOM.md](docs/CLUSTER-ZOOM.md) |
 | ⛔ Navigation arrows | The cluster's own widgets cannot be driven: no CarPlay turn-by-turn data reaches the head unit |
 | ⬜ Cleanup on disconnect | Last frame stays until the cockpit view is switched |

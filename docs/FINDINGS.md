@@ -177,7 +177,8 @@ tools/set-safearea.sh 0 28 700 320   # zone 0-700, centred at 350 against a canv
 ```
 
 The zone sits 155 px left of centre, the content sits right inside it, and the result lands
-centred on the cluster. Vehicle-tested.
+centred on the cluster. **Road-tested on 26 Oct 2026 and confirmed** — this is the working
+configuration.
 
 This also explains the "perfect centre" seen on 19 Oct at `155 28 700 320` and never
 reproduced afterwards: it was a coincidence of offset and width, not a setting anyone had
@@ -236,3 +237,29 @@ frequent.
 
 Untested in the car. The risk to watch for is the opposite failure — reacting to a
 composition pause that was not a fault, and rebuilding the context for nothing.
+
+
+## One rectangle cannot serve both states
+
+The road test showed the offset works while guiding and overshoots when it is not: idle,
+the map sits 155 px left. That is the model confirming itself rather than failing. The
+phone **centres its content in the SafeArea when idle and pushes it right while guiding**,
+so a rectangle that cancels the right-hand bias necessarily over-corrects when there is no
+bias to cancel.
+
+CarPlay allows more than one view area, and the hook can switch between them at runtime —
+`updateViewArea`, which the control state machine already implements and which had never
+been used because only one area was ever declared. So the answer is two rectangles:
+
+```bash
+tools/set-safearea.sh     155 28 700 320    # idle: centred, because the phone centres in it
+tools/set-safearea.sh nav   0 28 700 320    # guiding: 155 px left, to cancel the bias
+```
+
+The switch follows the `turns` field of the CarPlay mode state, which is already logged on
+every change. Which value means "guiding" is assumed to be 2, matching the convention the
+HMI uses elsewhere; if the log says otherwise, `mibr-carplay111-turns-active` corrects it
+without a rebuild.
+
+Untested. With no guiding rectangle configured, one view area is declared and none of this
+runs.

@@ -50,8 +50,10 @@ Road-tested on one vehicle:
 | Head unit | Škoda Amundsen 8", part `5Q0035874C` — MIB2 Standard "MST2", firmware `MST2_EU_SK_ZR_P0480T` |
 | Cluster | Virtual Cockpit **AID 10", part `5E0920790A`** |
 
-**This is for TechniSat/Preh units, not Delphi.** Both are sold as MIB2 Standard. Firmware
-beginning `MST2_` is the TechniSat/Preh family.
+**This is for TechniSat/Preh units, not Delphi.** Both are sold as MIB2 Standard and both
+run `MST2_` firmware, so the prefix alone does not identify the unit — the trailing letter
+does. **`T` is TechniSat/Preh**, as in `MST2_EU_SK_ZR_P0480T`; **`D` is Delphi**, as in
+`MST2_EU_VW_P0876D`.
 
 **Other TechniSat/Preh firmware** is intended but untested — there is no second unit here.
 Most of the work is firmware-independent, so it is a matter of testing rather than

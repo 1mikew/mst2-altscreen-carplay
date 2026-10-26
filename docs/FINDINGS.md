@@ -215,3 +215,24 @@ different. The first genuine keyframe tears it down and the real picture takes o
 Shrinking the window to hide it was tried first and does not work — `mmr_output_detach`
 is refused on a playing context — and destroying the window wedges DisplayManager. The
 splash sidesteps both: the window never changes, only its contents.
+
+
+## The stall watchdog was checking far too rarely
+
+There is a watchdog for the case the cluster freezes while frames are still being pushed:
+it reads the dpy-6 composition counter and, if that stands still, rebuilds the context and
+asks for a keyframe.
+
+It was gated on a frame count — once every 256 frames. At the rate the cluster takes, that
+is roughly **20 s between checks**, and it wants two checks in a row before acting. So a
+freeze had to last the better part of a minute before anything noticed, which means the
+mid-drive freezes that recover in a few seconds were never the watchdog's doing. Something
+else was fixing those.
+
+Now on a clock: twice a second, so a stall is caught in about one. The rate limit that
+stopped it rebuilding repeatedly came down from 30 s to 10, and the separate
+"DisplayManager is not capturing" count was re-sized, since checks are now forty times more
+frequent.
+
+Untested in the car. The risk to watch for is the opposite failure — reacting to a
+composition pause that was not a fault, and rebuilding the context for nothing.

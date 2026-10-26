@@ -500,7 +500,7 @@ static void v_watchdog(void)
      * (by switching the cockpit view); we have no handle on it. So just report it, and
      * above all do not tear anything down over it, because that would not help. */
     if (snima == 0) {
-        if (++no_capture >= 3) {
+        if (++no_capture >= 10) {                     /* ~5 s, not three checks */
             no_capture = 0;
             v_log("DisplayManager stopped capturing (counter=%lu) -> moving out of the cockpit so the "
                   "stock map redraws and the cluster can rebuild its video connection", c);
@@ -516,7 +516,7 @@ static void v_watchdog(void)
         if (++stalls >= 2) {                          /* two consecutive checks */
             time_t now = time(NULL);
             stalls = 0;
-            if (now - last_nudge < 30) return;        /* do not keep tearing it down */
+            if (now - last_nudge < 10) return;        /* do not keep tearing it down */
             last_nudge = now;
             v_log("dpy-6 composition stalled (counter=%lu) while we are still pushing -> tearing the context down and requesting a keyframe", c);
             { FILE *k = fopen(V_KEYFRAME, "w"); if (k) fclose(k); }
@@ -649,20 +649,32 @@ void vc111_feed(const uint8_t *au, size_t n, unsigned nal_len_size,
     }
     (void)nal_len_size;   /* nepouziva se: vstup je Annex-B */
 
-    if (v_state == 1 && (v_tick++ & 0xff) == 0) {
-        char chk[768];
-        const char *c = v_cfg(chk, sizeof(chk));
-        if (!c) {                                  /* konfigurace zmizela = vypnout */
-            v_log("configuration removed -> tearing the context down");
-            v_teardown(); return;
+    /* Check on a clock, not on a frame count. Tied to frames this ran once per 256 of
+     * them -- about 20 s at the rate the cluster takes -- and needs two checks in a row to
+     * act, so a stall lasted the best part of a minute before anything noticed. */
+    v_tick++;
+    {
+        static uint64_t next_check_us;
+        uint64_t now_us = v_now_us();
+
+        if (v_state == 1 && now_us >= next_check_us) {
+            char chk[768];
+            const char *c;
+
+            next_check_us = now_us + 500000ull;        /* twice a second */
+            c = v_cfg(chk, sizeof(chk));
+            if (!c) {                                  /* configuration gone = switch off */
+                v_log("configuration removed -> tearing the context down");
+                v_teardown(); return;
+            }
+            if (strcmp(c, v_used) != 0) {
+                v_log("configuration CHANGED -> tearing down, rebuilding on the next IDR");
+                v_log("  old: %s", v_used);
+                v_log("  new: %s", c);
+                v_teardown(); v_retries = 0; return;
+            }
+            v_watchdog();
         }
-        if (strcmp(c, v_used) != 0) {
-            v_log("configuration CHANGED -> tearing down, rebuilding on the next IDR");
-            v_log("  old: %s", v_used);
-            v_log("  new: %s", c);
-            v_teardown(); v_retries = 0; return;
-        }
-        v_watchdog();
     }
 
     if (v_state == 0) {

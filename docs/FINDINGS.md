@@ -157,3 +157,39 @@ but each try costs a reconnect, and the bare URL already does what matters.
 
 One harmless side effect: Waze rearranged its own layout on the radio display and stayed
 that way for the session. Route guidance and position were unaffected.
+
+
+## Centring: the SafeArea is an offset, not a frame
+
+Solved 26 Oct 2026, and not the way it was being attempted.
+
+With a route running, the phone holds its content against the **right** of the SafeArea,
+whatever the rectangle is. Widening the rectangle does not centre anything and does not
+push the manoeuvre card out of sight either — going from 700 to 800 wide moved the card by
+about a tenth of its own width.
+
+The lever is the rectangle's **position**. Offsetting the zone to the left cancels the
+right bias:
+
+```bash
+tools/set-surface.sh map             # no manoeuvre card
+tools/set-safearea.sh 0 28 700 320   # zone 0-700, centred at 350 against a canvas centre of 505
+```
+
+The zone sits 155 px left of centre, the content sits right inside it, and the result lands
+centred on the cluster. Vehicle-tested.
+
+This also explains the "perfect centre" seen on 19 Oct at `155 28 700 320` and never
+reproduced afterwards: it was a coincidence of offset and width, not a setting anyone had
+reasoned out.
+
+### What does not work
+
+| attempt | result |
+|---|---|
+| Widening the SafeArea to hide the manoeuvre card | Card barely moves; it is not anchored to the zone edge |
+| `map` surface alone | Removes the card, but the content stays right |
+| Negative `dstx` to shift our own window | QNX will not place the window off-display — black cluster |
+| Appearance parameters (`maneuverLayout`, `showETA`) | Cluster blanks as soon as a route starts |
+
+Removing the manoeuvre card needs the `map` surface. Nothing else does it.

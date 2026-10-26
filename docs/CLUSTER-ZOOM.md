@@ -3,6 +3,9 @@
 The wheel still zooms the stock map. Making it zoom a third-party CarPlay map needs two
 halves: notice the request, and act on it. The first half is solved; the second is not.
 
+This matters more with the map-only surface as the target: a map with no manoeuvre card is
+a map you want to scale yourself.
+
 ## Where the zoom request arrives
 
 Not at the key panel. On MQB the cluster decides what the wheel means while it shows the

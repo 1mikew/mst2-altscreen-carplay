@@ -36,7 +36,15 @@ How that project achieves it is not known here and was not examined. The work be
 own, from our own measurements.
 
 This project targets the AID 10" (`5E0920790A`), the family where the content is
-right-aligned. Two routes to centring, untested:
+right-aligned.
+
+**The intended answer is to not show the card at all.** CarPlay offers the cluster as three
+surfaces — `maps:/car/instrumentcluster`, `.../map` and `.../instructioncard` — and the
+map-only one is laid out as if no route were active, so it centres. The route still draws
+in the map; only the separate manoeuvre card goes away, and that is already on the radio
+display. `tools/set-surface.sh` switches it. Not road-tested yet.
+
+If the card ever has to come back, two routes to centring, both untested:
 
 - **Move the picture.** The output URL takes `dstx`/`dstw`, changeable at runtime with
   `tools/set-output.sh` — no rebuild, no reconnect. Shifting or scaling the decoded frame

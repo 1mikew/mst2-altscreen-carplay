@@ -38,7 +38,16 @@ own, from our own measurements.
 This project targets the AID 10" (`5E0920790A`), the family where the content is
 right-aligned.
 
-**The intended answer is to not show the card at all.** CarPlay offers the cluster as three
+**The card's position is settable.** The surface URL takes query parameters, and
+`maneuverLayout` accepts `leftAligned`, `rightAligned` and `topAligned`. They are off by
+default — the URL is sent bare unless enabled — which is why the card has only ever been
+seen where the phone chose to put it. `tools/set-nav-appearance.sh`. On a canvas this wide
+and short, `topAligned` is the one worth trying. Untested.
+
+Earlier notes here said the arrangement inside the SafeArea could not be influenced. That
+was wrong: the rectangle is not the only lever.
+
+**The intended answer is still to not show the card at all.** CarPlay offers the cluster as three
 surfaces — `maps:/car/instrumentcluster`, `.../map` and `.../instructioncard` — and the
 map-only one is laid out as if no route were active, so it centres. The route still draws
 in the map; only the separate manoeuvre card goes away, and that is already on the radio

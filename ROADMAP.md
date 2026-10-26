@@ -37,7 +37,7 @@ on one car; everything else is not done.
 | After disconnect | Last frame remains; switching the cockpit view clears it |
 | Capture stall | Recoverable only by switching the cockpit view; the HMI owns the FPK connection |
 | Firmware | One build, one car |
-| Layout inside the SafeArea | The app places its own elements; we choose the rectangle, not the arrangement |
+| Layout inside the SafeArea | Partly ours: `maneuverLayout` places the card left, right or top. Everything else is the app's |
 | Manoeuvre card | Not shown on the cluster by choice — the map-only surface is the target. The card stays on the radio display |
 
 ## Order of work

@@ -70,6 +70,14 @@ extern void strm_dict_destroy(strm_dict_t *);
  * tools/make-splash.py. Without the file nothing below changes behaviour at all. */
 #define V_SPLASH    "/tmp/cpvc_splash.h264"
 #define V_SPLASH_P  V_DIR "splash.h264"
+/* What to do with the cockpit once the phone stops sending:
+ *   keep     leave the last frame up (what it always did)
+ *   splash   replace it with ours
+ *   release  drop our context and let the built-in map have the cockpit back
+ * "release" is the one worth testing: an earlier attempt reported that destroying the
+ * window wedges DisplayManager, but that was never tried from a clean disconnect. */
+#define V_IDLEACT   "/tmp/cpvc_on-disconnect"
+#define V_IDLEACT_P V_DIR "on-disconnect"
 
 /* returns the first path that exists, or NULL */
 static const char *v_pick(const char *a, const char *b)
@@ -560,12 +568,34 @@ void vc111_idle_tick(void)
     /* The phone is gone and the cockpit is holding its last frame. Replacing it with the
      * splash is what finally works: shrinking the window fails (mmr_output_detach is
      * refused on a playing context) and destroying it wedges DisplayManager. */
-    if (!v_splash_on) {
-        char url[768];
-        const char *out = v_cfg(url, sizeof(url));
-        if (out && v_splash_show(out) == 0) {
-            v_log("no frames for %d s (phone disconnected?) -> splash", V_IDLE_S);
+    {
+        char act[32] = "keep";
+        const char *ap = v_pick(V_IDLEACT, V_IDLEACT_P);
+        if (ap) {
+            FILE *af = fopen(ap, "r");
+            if (af) {
+                if (fgets(act, sizeof(act), af)) {
+                    char *e = act + strlen(act);
+                    while (e > act && (e[-1]=='\n'||e[-1]=='\r'||e[-1]==' '||e[-1]=='\t')) *--e = 0;
+                }
+                fclose(af);
+            }
+        }
+        if (strcmp(act, "release") == 0) {
+            /* Give the cockpit back. Whether the built-in map actually redraws is the
+             * open question -- it stops while our window covers it, and DisplayManager
+             * only captures when Screen reports a change. */
+            v_log("no frames for %d s -> releasing the cockpit (on-disconnect=release)", V_IDLE_S);
+            v_teardown(); v_splash_on = 0;
             return;
+        }
+        if (strcmp(act, "splash") == 0 && !v_splash_on) {
+            char url[768];
+            const char *out = v_cfg(url, sizeof(url));
+            if (out && v_splash_show(out) == 0) {
+                v_log("no frames for %d s -> splash (on-disconnect=splash)", V_IDLE_S);
+                return;
+            }
         }
     }
     if (1) return;

@@ -56,6 +56,7 @@ tools/set-safearea.sh … # which part of the cluster canvas the phone may draw 
 tools/set-surface.sh …  # map only, or map plus the manoeuvre card
 tools/make-splash.py    # build a keyframe of our own
 tools/set-splash.sh     # ... and put it on the unit (leave it off to keep stock behaviour)
+tools/set-on-disconnect.sh …  # keep the last frame, show the splash, or release the cockpit
 ```
 
 Nothing has to be exported from the unit for this. The decoder initialisation is built

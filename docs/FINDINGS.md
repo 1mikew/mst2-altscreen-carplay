@@ -130,3 +130,30 @@ waiting for a keyframe - requesting one
 
 Those two lines separate the two candidates: the cluster view not yet being on the map, and
 the keyframe itself. Read them before concluding anything.
+
+
+## The appearance parameters blank the cluster
+
+Tried in the car, 26 Oct 2026. The cluster went black as soon as route guidance started,
+and the bare URL brought it straight back.
+
+What went out:
+
+```
+url=maps:/car/instrumentcluster?showSpeedLimit=user&showCompass=user&showETA=yes&maneuverLayout=topAligned
+```
+
+Nothing failed on our side — no error was logged and the session stayed up. The phone
+simply stopped producing frames: the push rate fell from about 27 a second to 2.4, which is
+what a black screen looks like from here.
+
+Note that **all four parameters are always sent**. Setting two of them still emits the
+other two with a default of `user`. An untested but plausible explanation is that `user` is
+not a value the protocol accepts, and one bad parameter invalidates the whole URL — which
+would explain losing the picture entirely rather than just losing the manoeuvre bar.
+
+A narrower attempt is possible — explicit `yes`/`no` everywhere and no `maneuverLayout` —
+but each try costs a reconnect, and the bare URL already does what matters.
+
+One harmless side effect: Waze rearranged its own layout on the radio display and stayed
+that way for the session. Route guidance and position were unaffected.

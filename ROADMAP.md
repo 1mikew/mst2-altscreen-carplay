@@ -39,7 +39,7 @@ on one car; everything else is not done.
 | Mid-drive freeze | The cluster picture stops for a few seconds while the phone keeps navigating normally, then catches up on its own. Not always fatal, so the earlier "only a view switch recovers it" was too absolute |
 | Startup delay | 10–30 s from connecting the phone to a picture on the cluster |
 | Firmware | One build, one car |
-| Layout inside the SafeArea | Partly ours: `maneuverLayout` places the card left, right or top. Everything else is the app's |
+| Layout inside the SafeArea | `maneuverLayout` exists but blanks the cluster in practice. The rectangle is the only lever that works |
 | Manoeuvre card | Not shown on the cluster by choice — the map-only surface is the target. The card stays on the radio display |
 
 ## Order of work
@@ -49,8 +49,8 @@ The overlay is gone, so the picture can finally be judged on its own.
 1. 🟡 Cluster layout, in priority order. **A centred map is the requirement**; everything
    else is optional and must not cost it.
    - Keep the centred map — already working, SafeArea `245 28 520 320`
-   - Try a slim manoeuvre bar and ETA on top of it: `maneuver top`, `eta yes`. These
-     appearance parameters ship switched off, so they are untried here
+   - ~~A slim manoeuvre bar and ETA~~ — tried 26 Oct, the cluster goes black as soon as a
+     route starts. Reverted. See [docs/FINDINGS.md](docs/FINDINGS.md)
    - If they cost the centring, drop them. The manoeuvre card is on the radio display
      anyway, and the map-only surface (`set-surface.sh map`) is the fallback
 2. 🔬 Measure the startup delay and the freezes before touching D2

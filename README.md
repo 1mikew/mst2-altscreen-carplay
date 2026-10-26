@@ -17,6 +17,7 @@ CarPlay screen keeps running on the radio display. Two independent displays, one
 >
 > **Work in progress. Not finished, not a product, not an installer.**
 >
+> - **TechniSat/Preh units only**, not Delphi.
 > - **Not an SD-card solution.** You need shell access to your own head unit.
 > - **Experiments can leave the unit unusable until a reboot**, or take it down entirely.
 > - **No warranty. No liability** for damage to head units, clusters, any other vehicle
@@ -49,10 +50,14 @@ Road-tested on one vehicle:
 | Head unit | Škoda Amundsen 8", part `5Q0035874C` — MIB2 Standard "MST2", firmware `MST2_EU_SK_ZR_P0480T` |
 | Cluster | Virtual Cockpit **AID 10", part `5E0920790A`** |
 
-**Other firmware is intended, not supported yet** — we simply have no other unit to test
-on. Most of the work is firmware-independent (the CarPlay session, the push protocol, the
-window handling), so widening support is a matter of testing rather than redesign. If you
-have a MIB2 Standard unit with shell access, see *Help wanted* in
+**This is for TechniSat/Preh units, not Delphi.** Both are sold as MIB2 Standard and both
+run `MST2_` firmware, so the prefix alone does not identify the unit — the trailing letter
+does. **`T` is TechniSat/Preh**, as in `MST2_EU_SK_ZR_P0480T`; **`D` is Delphi**, as in
+`MST2_EU_VW_P0876D`.
+
+**Other TechniSat/Preh firmware** is intended but untested — there is no second unit here.
+Most of the work is firmware-independent, so it is a matter of testing rather than
+redesign. If you have one with shell access, see *Help wanted* in
 [ROADMAP.md](ROADMAP.md).
 
 👉 **[ROADMAP.md](ROADMAP.md)** — full status, what is missing, what is planned.

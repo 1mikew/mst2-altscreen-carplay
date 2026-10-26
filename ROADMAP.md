@@ -38,17 +38,16 @@ on one car; everything else is not done.
 | Capture stall | Recoverable only by switching the cockpit view; the HMI owns the FPK connection |
 | Firmware | One build, one car |
 | Layout inside the SafeArea | The app places its own elements; we choose the rectangle, not the arrangement |
-| Manoeuvre icon | Oversized on the cluster. Physical size is advertised as 200×74 mm and is currently env-only, not file-tunable |
+| Manoeuvre card | Not shown on the cluster by choice — the map-only surface is the target. The card stays on the radio display |
 
 ## Order of work
 
 The overlay is gone, so the picture can finally be judged on its own.
 
-1. 🟡 Centre the navigation layout. Two routes, cheapest first: move the picture with
-   `set-output.sh`, or declare a different canvas. Evidence it is possible: the same
-   phone centres on an AID 12.3 cluster and right-aligns on the 10.5
+1. 🟡 Road-test the map-only surface (`tools/set-surface.sh map`). If the route still
+   draws and the layout centres, that is the intended configuration and the
+   right-alignment problem disappears with the card
 2. 🔬 Raise the cluster frame rate past the hard-coded 10
-3. ⬜ Make the advertised physical size file-tunable, to size the manoeuvre icon
 3. ⬜ Auto cleanup when the phone disconnects
 4. ⬜ Extended road testing *(gate for everything below)*
 5. ⬜ D2 tuning *(fork)*

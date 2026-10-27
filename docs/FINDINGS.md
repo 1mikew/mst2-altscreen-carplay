@@ -317,3 +317,10 @@ exists.
 The gate is not wrong; taking the cockpit early is what produced a frozen frame from the
 previous session. What was wrong is that the skip was silent. It now says so in the log,
 which is the measurement needed before changing anything else.
+
+There was a second fault underneath it, and this one is settled: **the splash was the
+wrong size.** Type-111 carries 1010x376 — measured from a capture, not assumed — and the
+splash was being encoded at 1024x384, the panel's dimensions. The generator's own comment
+claimed the two were kept identical, which is how it went unnoticed. The stream is also
+full range (`yuvj420p`) where the splash was limited range. Both now match, so if the
+splash is pushed and still shows nothing, the cause is somewhere else.

@@ -20,7 +20,7 @@ import os
 import subprocess
 import sys
 
-W, H = 1024, 384
+W, H = 1010, 376
 
 # Measured visible band on the AID 10": about 24%-71% of the panel width.
 SAFE_L, SAFE_R = int(W * 0.24), int(W * 0.71)
@@ -73,9 +73,13 @@ def encode(png, out):
         "-c:v", "libx264",
         "-profile:v", "high",
         "-pix_fmt", "yuv420p",
-        # The unit decodes what the phone sends at this size; keep the splash identical so
-        # the decoder is handed the same geometry either way.
+        # Match the real stream exactly, so the decoder is handed the same geometry
+        # either way. captures/t111_1024x384.h264 is 1010x376 despite its name -- it was
+        # named after the cockpit panel, not after what Type-111 actually carries.
         "-s", "%dx%d" % (W, H),
+        # The stream is full-range (yuvj420p); keep the splash in the same range so the
+        # picture does not shift when one replaces the other.
+        "-color_range", "pc",
         "-f", "h264", out,
     ], check=True)
 

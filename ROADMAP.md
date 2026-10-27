@@ -21,7 +21,7 @@ on one car; everything else is not done.
 | ✅ | **"Navigation on phone" overlay removed** | One instruction in `CarPlayModeHandling`; route guidance is visible. [docs/HMI-OVERLAY.md](docs/HMI-OVERLAY.md) |
 | 🟡 | Auto cleanup on disconnect | Three behaviours now selectable: `keep`, `splash`, `release`. `release` drops our context so the built-in map can come back — the thing actually wanted, and the thing never properly tested. `tools/set-on-disconnect.sh` |
 | 🟡 | **Splash frame of our own** | Written, builds clean, not yet tried in the car. Covers the startup gap and replaces the frame left frozen after a disconnect. Its own context primed from its own SPS/PPS; the first real keyframe drops it. Off unless the file is present |
-| 🟡 | Mid-drive freezes | The stall watchdog ran once per 256 frames, about 20 s, and needed two checks — so it never explained the few-second recoveries seen while driving. Now on a clock, twice a second. Untested |
+| 🟡 | Mid-drive freezes | Baseline measured 27 Oct on the old library: 3–5 per drive, each recovering by itself. The watchdog ran once per 256 frames, about 20 s; now on a clock, twice a second. Expect shorter freezes rather than fewer. Untested |
 | 🔬 | Startup delay | 10–30 s to first picture, and brief freezes that recover by themselves. Both plausibly wait on the same thing — an IDR, which Type-111 sends about every 29 s — but the logs already show a resync completing in ~150 ms, so that is a hypothesis, not a diagnosis. Measure before changing anything |
 | ⬜ | Extended road testing | Longer drives, connect/disconnect cycles, cold starts |
 | 🟡 | SafeArea / ViewArea *(fork)* | Honoured by the app and tunable from a file. Calibrated to `245 28 520 320`; centring still to be refined |

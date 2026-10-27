@@ -263,3 +263,14 @@ without a rebuild.
 
 Untested. With no guiding rectangle configured, one view area is declared and none of this
 runs.
+
+
+## Baseline: how often the picture freezes
+
+A full drive on 27 Oct 2026, on the **old library** — the one whose stall watchdog checks
+once every 256 frames — gave **three to five freezes**, each recovering on its own.
+Everything else worked.
+
+That is the number to measure the faster watchdog against. What should change is the
+length of each freeze, not necessarily how often they happen: the watchdog only shortens
+recovery, it does not stop the stall occurring.

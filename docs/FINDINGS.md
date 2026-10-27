@@ -274,3 +274,46 @@ Everything else worked.
 That is the number to measure the faster watchdog against. What should change is the
 length of each freeze, not necessarily how often they happen: the watchdog only shortens
 recovery, it does not stop the stall occurring.
+
+
+## The faster watchdog: no freezes at all
+
+The drive on the evening of 27 Oct 2026, on the library whose watchdog checks twice a
+second, had **none**. Not shorter freezes — none observed over the same route that gave
+three to five the same morning.
+
+That is one drive, so it is an encouraging number rather than a settled one, and the
+mechanism only explains part of it: a check every 256 frames at 10 fps is a check every
+25 s, so a stall that cleared in a few seconds used to clear on its own, unnoticed and
+unrecorded. Some of what was counted as a freeze may simply now be too short to see.
+
+
+## Starvation is not a disconnect
+
+With `on-disconnect=release`, leaving the CarPlay window on the radio — into the car
+menu, or any other screen — took the map off the cluster and put the built-in navigation
+there instead. Going back to the phone's map brought it back after a few seconds.
+
+Nothing disconnected. The frames stop while the radio is showing something else, and the
+idle timer was five seconds, so a perfectly normal app switch read as a phone going away.
+The few seconds coming back are the keyframe wait: the context has to be rebuilt, and an
+IDR is only requested once every ten seconds.
+
+Frame starvation was the wrong signal in the first place. The session teardown hook
+already distinguishes the cases we care about — an explicit stream-111 teardown, or the
+whole AirPlay session ending — from stock tearing down screen 110 alone, which must not
+touch the cluster. The action now runs from there, and the idle timer survives only as
+the fallback for a disconnect that never reports itself, at 30 s.
+
+
+## Why the splash showed nothing
+
+It is gated on DisplayManager actually capturing the cockpit, the same condition that
+stops us covering the built-in map before the cluster has a video connection to rebuild
+from. While that gate is shut there is no splash, and by the time it opens the real
+keyframe has usually arrived too — so the window the splash was written for barely
+exists.
+
+The gate is not wrong; taking the cockpit early is what produced a frozen frame from the
+previous session. What was wrong is that the skip was silent. It now says so in the log,
+which is the measurement needed before changing anything else.

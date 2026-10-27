@@ -378,6 +378,7 @@ void vc111_feed(const uint8_t *au, size_t n, unsigned nal_len_size,
 int  vc111_wants_data(void);
 /* clean the window off the cockpit once frames stop arriving (phone disconnected) */
 void vc111_idle_tick(void);
+void vc111_session_gone(void);
 static int start_capture_server(void);
 
 static void logf_u2(const char *fmt, ...)
@@ -3474,6 +3475,7 @@ static void mibr_session_teardown(AirPlayReceiverSessionRef s, CFDictionaryRef r
 
     if(has_alt){
         logf_u2("GEN2 TEARDOWN explicit stream111 otherStreams=%d main110=%d",other,has_main);
+        vc111_session_gone();
         gen2_control_release();
         if(full_session) gen2_set_command_ready(0);
         stop_alt_receiver();
@@ -3494,6 +3496,7 @@ static void mibr_session_teardown(AirPlayReceiverSessionRef s, CFDictionaryRef r
 
     if(full_session) {
         logf_u2("GEN2 TEARDOWN whole-session -> private111 cleanup");
+        vc111_session_gone();
         gen2_control_release();
         gen2_set_command_ready(0);
         stop_alt_receiver();

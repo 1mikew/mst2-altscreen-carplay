@@ -78,6 +78,12 @@ extern void strm_dict_destroy(strm_dict_t *);
  * window wedges DisplayManager, but that was never tried from a clean disconnect. */
 #define V_IDLEACT   "/tmp/cpvc_on-disconnect"
 #define V_IDLEACT_P V_DIR "on-disconnect"
+/* How long without frames counts as gone. A real disconnect is permanent, so waiting
+ * costs nothing; switching away from the CarPlay window on the radio stops the frames
+ * for a few seconds and is not a disconnect at all. The session teardown hook handles
+ * the real thing at once, so this is only the fallback for a yanked cable. */
+#define V_IDLESEC   "/tmp/cpvc_idle-seconds"
+#define V_IDLESEC_P V_DIR "idle-seconds"
 
 /* returns the first path that exists, or NULL */
 static const char *v_pick(const char *a, const char *b)
@@ -119,7 +125,6 @@ static char v_used[768];
 static time_t v_last_feed;      /* when the last frame arrived -- used to clean up after the phone disconnects */
 static int v_oid = -1;          /* id of our video output */
 static int v_hidden;            /* 1 = we moved out of the way */
-static int v_hide_broken;       /* 1 = runtime geometry change does not work here; stop trying */
 /* SPS and PPS are collected CONTINUOUSLY: they are not necessarily in the same access
   * unit as the keyframe (confirmed on the vehicle) and often arrive earlier on their own.
   * Without them no avcC can be built and the decoder ends in error::5. */
@@ -463,19 +468,19 @@ static int v_splash_show(const char *out_url)
 #define V_KEYFRAME "/tmp/mibr-alt111-keyframe-only"
 
 /* read the composition counter from the dpy-6 dump, and whether capture is active */
-static unsigned long v_dpy_counter(int *snima)
+static unsigned long v_dpy_counter(int *capturing)
 {
     FILE *f = fopen(V_DPY6, "r");
     char line[160];
     unsigned long v = 0;
-    if (snima) *snima = -1;
+    if (capturing) *capturing = -1;
     if (!f) return 0;
     while (fgets(line, sizeof(line), f)) {
         if (!v && strncmp(line, "counter", 7) == 0) {
             char *e = strchr(line, '=');
             if (e) v = strtoul(e + 1, NULL, 10);
-        } else if (snima && strncmp(line, "capture buffer", 14) == 0) {
-            *snima = (strstr(line, "(none)") == NULL);
+        } else if (capturing && strncmp(line, "capture buffer", 14) == 0) {
+            *capturing = (strstr(line, "(none)") == NULL);
         }
     }
     fclose(f);
@@ -488,8 +493,8 @@ static void v_watchdog(void)
     static int stalls;
     static time_t last_nudge;
     static int no_capture;
-    int snima = -1;
-    unsigned long c = v_dpy_counter(&snima);
+    int capturing = -1;
+    unsigned long c = v_dpy_counter(&capturing);
 
     if (!c) return;                                   /* unreadable -> ignore */
 
@@ -499,7 +504,7 @@ static void v_watchdog(void)
      * instead of "0 -> 1" plus "Start transmission". Only the HMI/cluster can rebuild it
      * (by switching the cockpit view); we have no handle on it. So just report it, and
      * above all do not tear anything down over it, because that would not help. */
-    if (snima == 0) {
+    if (capturing == 0) {
         if (++no_capture >= 10) {                     /* ~5 s, not three checks */
             no_capture = 0;
             v_log("DisplayManager stopped capturing (counter=%lu) -> moving out of the cockpit so the "
@@ -508,8 +513,8 @@ static void v_watchdog(void)
         }
         return;
     }
-    if (snima == 1 && no_capture) {
-        v_log("DisplayManager zase snima, pokracujeme");
+    if (capturing == 1 && no_capture) {
+        v_log("DisplayManager is capturing again; carrying on");
         no_capture = 0;
     }
     if (last_counter && c == last_counter && (unsigned long)v_sent != last_sent) {
@@ -538,7 +543,26 @@ static void v_watchdog(void)
   * behaviour is the opposite: without a phone the built-in map runs, with a phone CarPlay
   * takes over. So get out of the way when nothing arrives for a while; when the phone
   * comes back the context is rebuilt on the first keyframe. */
-#define V_IDLE_S 5
+#define V_IDLE_S_DEFAULT 30
+
+static int v_idle_s(void)
+{
+    static int cached;
+    if (!cached) {
+        const char *p;
+        cached = V_IDLE_S_DEFAULT;
+        p = v_pick(V_IDLESEC, V_IDLESEC_P);
+        if (p) {
+            FILE *f = fopen(p, "r");
+            if (f) {
+                int n = 0;
+                if (fscanf(f, "%d", &n) == 1 && n >= 1 && n <= 600) cached = n;
+                fclose(f);
+            }
+        }
+    }
+    return cached;
+}
 
 /* Move out of the way by changing zorder. Why not simply tear the context down:
   * destroying the window sends DisplayManager a SCREEN_EVENT_CLOSE for a window it does
@@ -561,52 +585,68 @@ static int v_reattach(const char *url)
     return 0;
 }
 
+/* keep | splash | release, from the config file */
+static void v_read_idle_action(char *act, size_t n)
+{
+    const char *ap;
+    strncpy(act, "keep", n); act[n-1] = 0;
+    ap = v_pick(V_IDLEACT, V_IDLEACT_P);
+    if (!ap) return;
+    {
+        FILE *af = fopen(ap, "r");
+        if (!af) return;
+        if (fgets(act, (int)n, af)) {
+            char *e = act + strlen(act);
+            while (e > act && (e[-1]=='\n'||e[-1]=='\r'||e[-1]==' '||e[-1]=='\t')) *--e = 0;
+        }
+        fclose(af);
+    }
+}
+
+/* Do whatever the configured action says with a cockpit the phone is no longer feeding.
+ * Replacing the last frame with the splash is what works: shrinking the window fails
+ * (mmr_output_detach is refused on a playing context) and destroying it wedges
+ * DisplayManager. "why" only reaches the log -- a real teardown and a silent stream are
+ * handled the same from here. */
+static void v_idle_action(const char *why)
+{
+    char act[32];
+    v_read_idle_action(act, sizeof(act));
+
+    if (strcmp(act, "release") == 0) {
+        /* Give the cockpit back. Whether the built-in map actually redraws is the
+         * open question -- it stops while our window covers it, and DisplayManager
+         * only captures when Screen reports a change. */
+        v_log("%s -> releasing the cockpit (on-disconnect=release)", why);
+        v_teardown(); v_splash_on = 0;
+        return;
+    }
+    if (strcmp(act, "splash") == 0 && !v_splash_on) {
+        char url[768];
+        const char *out = v_cfg(url, sizeof(url));
+        if (out && v_splash_show(out) == 0)
+            v_log("%s -> splash (on-disconnect=splash)", why);
+    }
+}
+
+/* The session really ended: an explicit stream-111 teardown, or the whole AirPlay
+ * session going away. Called from the teardown hook, so there is nothing to infer from
+ * frame starvation -- which is what made leaving the CarPlay window on the radio look
+ * like a disconnect. */
+void vc111_session_gone(void)
+{
+    if (v_state != 1) return;
+    v_idle_action("session torn down");
+}
+
 void vc111_idle_tick(void)
 {
+    char why[64];
+    int secs = v_idle_s();
     if (v_state != 1 || !v_last_feed) return;
-    if (time(NULL) - v_last_feed < V_IDLE_S) return;
-    /* The phone is gone and the cockpit is holding its last frame. Replacing it with the
-     * splash is what finally works: shrinking the window fails (mmr_output_detach is
-     * refused on a playing context) and destroying it wedges DisplayManager. */
-    {
-        char act[32] = "keep";
-        const char *ap = v_pick(V_IDLEACT, V_IDLEACT_P);
-        if (ap) {
-            FILE *af = fopen(ap, "r");
-            if (af) {
-                if (fgets(act, sizeof(act), af)) {
-                    char *e = act + strlen(act);
-                    while (e > act && (e[-1]=='\n'||e[-1]=='\r'||e[-1]==' '||e[-1]=='\t')) *--e = 0;
-                }
-                fclose(af);
-            }
-        }
-        if (strcmp(act, "release") == 0) {
-            /* Give the cockpit back. Whether the built-in map actually redraws is the
-             * open question -- it stops while our window covers it, and DisplayManager
-             * only captures when Screen reports a change. */
-            v_log("no frames for %d s -> releasing the cockpit (on-disconnect=release)", V_IDLE_S);
-            v_teardown(); v_splash_on = 0;
-            return;
-        }
-        if (strcmp(act, "splash") == 0 && !v_splash_on) {
-            char url[768];
-            const char *out = v_cfg(url, sizeof(url));
-            if (out && v_splash_show(out) == 0) {
-                v_log("no frames for %d s -> splash (on-disconnect=splash)", V_IDLE_S);
-                return;
-            }
-        }
-    }
-    if (1) return;
-    if (v_hidden || v_hide_broken) return;
-    v_hidden = 1;
-    v_log("no frames for %d s (phone disconnected?) -> shrinking the window to 1 px so the "
-          "built-in map comes back", V_IDLE_S);
-    { int rc = v_reattach("screen:/?index=1&overlay=0&dstx=0&dsty=0&dstw=1&dsth=1&zorder=500");
-      v_log("  shrink rc=%d", rc);
-      if (rc < 0) { v_hide_broken = 1; v_hidden = 0;
-                    v_log("  runtime geometry change does not work here; not trying again"); } }
+    if ((long)(time(NULL) - v_last_feed) < (long)secs) return;
+    snprintf(why, sizeof(why), "no frames for %d s", secs);
+    v_idle_action(why);
 }
 
 /* Is our cockpit sink running? Used by the gen2 output thread so the stream does not
@@ -632,7 +672,7 @@ void vc111_feed(const uint8_t *au, size_t n, unsigned nal_len_size,
     uint64_t pts;
     (void)idr;
 
-    if (v_state < 0) return;                       /* natrvalo vypnuto */
+    if (v_state < 0) return;                       /* disabled for good */
     if (!au || !n) return;
     if (v_splash_on && idr) {
         /* The stream has its own parameter sets; keep nothing of ours. */
@@ -681,9 +721,10 @@ void vc111_feed(const uint8_t *au, size_t n, unsigned nal_len_size,
         /* We MUST start on a keyframe: starting mid-GOP means the engine never sees the
          * parameter sets and fails with error 5 (verified). */
         if (!idr) {
-            /* Start je navazany na klicovy snimek a ten chodi jen ~1x za 29 s - cekani
-             * je citelne. Rekneme si o nej sami: gen2 marker ho spotrebuje a vyvola
-             * forceKeyFrame. Zkouska nejvyse jednou za 10 s, at nezahltime telefon. */
+            /* The start waits on a keyframe and one arrives only about every 29 s, which
+             * is a noticeable wait. Ask for one instead: the gen2 marker consumes this
+             * file and issues forceKeyFrame. At most once every 10 s, so the phone is
+             * not flooded with requests. */
             static time_t last_req;
             time_t now = time(NULL);
             if (now - last_req >= 10) {
@@ -696,28 +737,39 @@ void vc111_feed(const uint8_t *au, size_t n, unsigned nal_len_size,
              * still holding. Only once DisplayManager is capturing -- same reason as the
              * real start below. */
             if (!v_splash_on) {
-                int snima = -1;
-                (void)v_dpy_counter(&snima);
-                if (snima == 1) {
+                int capturing = -1;
+                (void)v_dpy_counter(&capturing);
+                if (capturing == 1) {
                     char url[768];
                     const char *out = v_cfg(url, sizeof(url));
                     if (out) (void)v_splash_show(out);
+                } else {
+                    /* The gate that keeps us off the cockpit before the cluster has a
+                     * video connection also hides the splash. Say so, once -- the first
+                     * drive with a splash file showed nothing at all and this is the
+                     * likeliest reason. */
+                    static int said;
+                    if (!said) {
+                        said = 1;
+                        v_log("splash held back: DisplayManager is not capturing yet "
+                              "(capture buffer = none)");
+                    }
                 }
             }
             v_tick++; return;
         }
         out = v_cfg(url, sizeof(url));
-        if (!out) return;                          /* vypnuto souborem */
+        if (!out) return;                          /* switched off by a file */
         /* DO NOT take over the cockpit too early. Our window covers the map, the map
          * stops redrawing, and while the cluster has no FPK video connection there is
          * nothing left to rebuild it from -- the cluster then keeps a frozen frame from
          * the previous session (observed after a reboot). So wait until DisplayManager is
          * actually capturing. */
-        { int snima = -1;
-          (void)v_dpy_counter(&snima);
-          if (snima == 0) {
-              static int hlaseno;
-              if (!hlaseno) { hlaseno = 1; v_log("waiting for DisplayManager to start capturing the cockpit (capture buffer = none)"); }
+        { int capturing = -1;
+          (void)v_dpy_counter(&capturing);
+          if (capturing == 0) {
+              static int said;
+              if (!said) { said = 1; v_log("waiting for DisplayManager to start capturing the cockpit (capture buffer = none)"); }
               return;
           } }
         { uint8_t built[256];

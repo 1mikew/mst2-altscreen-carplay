@@ -324,3 +324,28 @@ splash was being encoded at 1024x384, the panel's dimensions. The generator's ow
 claimed the two were kept identical, which is how it went unnoticed. The stream is also
 full range (`yuvj420p`) where the splash was limited range. Both now match, so if the
 splash is pushed and still shows nothing, the cause is somewhere else.
+
+
+## Can one rectangle centre both states?
+
+Two measurements, both taken at width 700:
+
+- idle, `155 28 700 320` — centred. The phone centres its content in the rectangle.
+- guiding, `0 28 700 320` — centred. The phone pushes its content right.
+
+Those two fit two different rules, and at width 700 the two rules predict the same pixel,
+which is why one measurement each was never enough to tell them apart:
+
+| rule | guiding content centre | one rectangle for both? |
+|---|---|---|
+| fixed inset from the right edge, 195 px | `x + w - 195` | yes, at `w = 390`, `x = 310` |
+| fixed bias from the rectangle's centre, 155 px | `x + w/2 + 155` | no, never |
+
+At `w = 700` both give 505, the centre of the 1010 canvas. They separate at any other
+width, so `310 28 390 320` decides it: idle is centred under either rule, and guiding is
+either centred as well (inset rule, and one rectangle is enough) or 155 px right of centre
+(bias rule, and the view-area switch has to be made to work).
+
+Untested. Narrowing the rectangle from 700 to 390 is a large change and the phone may
+rescale its content rather than only move it, which would show up as a smaller map rather
+than a shifted one.

@@ -12,8 +12,10 @@ echo '== mm-renderer contexts'
 ls /pps/services/multimedia/renderer/context/
 echo '== cockpit capture'
 grep 'capture buffer' /dev/screen/0/dpy-6
-echo '== last log lines'
-tail -3 /tmp/cpvc_111.log 2>/dev/null || echo '  (no log yet)'"
+echo '== last log lines (sink)'
+tail -3 /tmp/cpvc_111.log 2>/dev/null || echo '  (no log yet)'
+echo '== view areas and guidance (library)'
+grep -E 'ViewArea|guidance turns' /tmp/altscreen111.log 2>/dev/null | tail -6 || echo '  (nothing logged)'"
 C1=$(u "grep counter /dev/screen/0/dpy-6" 2>/dev/null | grep -oE '[0-9]+$'); sleep 8
 C2=$(u "grep counter /dev/screen/0/dpy-6" 2>/dev/null | grep -oE '[0-9]+$')
 echo "== cockpit composition: $(echo "scale=1; ($C2-$C1)/8" | bc) fps"

@@ -84,6 +84,13 @@ extern void strm_dict_destroy(strm_dict_t *);
  * the real thing at once, so this is only the fallback for a yanked cable. */
 #define V_IDLESEC   "/tmp/cpvc_idle-seconds"
 #define V_IDLESEC_P V_DIR "idle-seconds"
+/* Watchdog thresholds, in seconds. The defaults have to outlast the normal reasons the
+ * cockpit stops being fed -- a parking camera or any other radio view stops the capture
+ * for as long as the driver leaves it up, and that is not a fault to recover from. */
+#define V_NOCAPSEC   "/tmp/cpvc_nocapture-seconds"
+#define V_NOCAPSEC_P V_DIR "nocapture-seconds"
+#define V_STALLSEC   "/tmp/cpvc_stall-seconds"
+#define V_STALLSEC_P V_DIR "stall-seconds"
 
 /* returns the first path that exists, or NULL */
 static const char *v_pick(const char *a, const char *b)
@@ -487,14 +494,34 @@ static unsigned long v_dpy_counter(int *capturing)
     return v;
 }
 
+/* Read a wall-clock threshold from an optional file, session-local first.
+ * Every threshold here used to be a count of watchdog checks, which silently changed
+ * meaning the moment the check interval did. Seconds do not. */
+static int v_secs(const char *a, const char *b, int dflt)
+{
+    const char *p = v_pick(a, b);
+    if (p) {
+        FILE *f = fopen(p, "r");
+        if (f) {
+            int n = 0;
+            int got = (fscanf(f, "%d", &n) == 1);
+            fclose(f);
+            if (got && n >= 1 && n <= 3600) return n;
+        }
+    }
+    return dflt;
+}
+
+static int v_nocap_s(void) { return v_secs(V_NOCAPSEC, V_NOCAPSEC_P, 60); }
+static int v_stall_s(void) { return v_secs(V_STALLSEC, V_STALLSEC_P, 4); }
+
 static void v_watchdog(void)
 {
     static unsigned long last_counter, last_sent;
-    static int stalls;
-    static time_t last_nudge;
-    static int no_capture;
+    static time_t stall_since, nudged_at, last_teardown, nocap_since;
     int capturing = -1;
     unsigned long c = v_dpy_counter(&capturing);
+    time_t now = time(NULL);
 
     if (!c) return;                                   /* unreadable -> ignore */
 
@@ -502,35 +529,56 @@ static void v_watchdog(void)
      * is not capturing at all (capture buffer = none). That happens when the cluster has
      * no FPK video connection -- the log shows "fpkUpdateTargetState(streaming): 2 -> 2"
      * instead of "0 -> 1" plus "Start transmission". Only the HMI/cluster can rebuild it
-     * (by switching the cockpit view); we have no handle on it. So just report it, and
-     * above all do not tear anything down over it, because that would not help. */
+     * (by switching the cockpit view), so the one thing that helps is to stop covering
+     * the stock map.
+     *
+     * But capture also stops for an entirely ordinary reason: the radio is showing
+     * something else -- a parking camera, a menu -- for as long as the driver wants. That
+     * is not a fault, and tearing down over it put the stock map on the cluster every
+     * time. Hence a threshold that outlasts a driver looking at a camera. */
     if (capturing == 0) {
-        if (++no_capture >= 10) {                     /* ~5 s, not three checks */
-            no_capture = 0;
-            v_log("DisplayManager stopped capturing (counter=%lu) -> moving out of the cockpit so the "
-                  "stock map redraws and the cluster can rebuild its video connection", c);
+        if (!nocap_since) nocap_since = now;
+        if (now - nocap_since >= v_nocap_s()) {
+            nocap_since = 0;
+            v_log("DisplayManager has not captured for %ds (counter=%lu) -> moving out of "
+                  "the cockpit so the stock map redraws and the cluster can rebuild its "
+                  "video connection", v_nocap_s(), c);
             v_teardown(); v_retries = 0;        /* we come back once capture resumes */
         }
         return;
     }
-    if (capturing == 1 && no_capture) {
+    if (capturing == 1 && nocap_since) {
         v_log("DisplayManager is capturing again; carrying on");
-        no_capture = 0;
+        nocap_since = 0;
     }
+
+    /* Composition frozen while we are still pushing frames. Recovery comes in two stages,
+     * because the second one is visible to the driver and the first one is not. */
     if (last_counter && c == last_counter && (unsigned long)v_sent != last_sent) {
-        if (++stalls >= 2) {                          /* two consecutive checks */
-            time_t now = time(NULL);
-            stalls = 0;
-            if (now - last_nudge < 10) return;        /* do not keep tearing it down */
-            last_nudge = now;
-            v_log("dpy-6 composition stalled (counter=%lu) while we are still pushing -> tearing the context down and requesting a keyframe", c);
-            { FILE *k = fopen(V_KEYFRAME, "w"); if (k) fclose(k); }
-            v_teardown(); v_retries = 0;
-            last_counter = 0; last_sent = 0;
-            return;
+        if (!stall_since) stall_since = now;
+        if (now - stall_since >= v_stall_s()) {
+            if (!nudged_at) {
+                nudged_at = now;
+                v_log("dpy-6 composition stalled for %ds (counter=%lu) while we are still "
+                      "pushing -> requesting a keyframe, leaving the window alone",
+                      (int)(now - stall_since), c);
+                { FILE *k = fopen(V_KEYFRAME, "w"); if (k) fclose(k); }
+            } else if (now - nudged_at >= v_stall_s()) {
+                /* The keyframe did not unstick it. Tearing the context down does, but it
+                 * uncovers the stock map for as long as the rebuild takes, so it is the
+                 * second choice and not the first. */
+                if (now - last_teardown < 10) return;  /* do not keep tearing it down */
+                v_log("still stalled %ds after the keyframe request -> tearing the context down",
+                      (int)(now - nudged_at));
+                last_teardown = now;
+                stall_since = 0; nudged_at = 0;
+                v_teardown(); v_retries = 0;
+                last_counter = 0; last_sent = 0;
+                return;
+            }
         }
     } else {
-        stalls = 0;
+        stall_since = 0; nudged_at = 0;
     }
     last_counter = c;
     last_sent = (unsigned long)v_sent;
@@ -547,21 +595,7 @@ static void v_watchdog(void)
 
 static int v_idle_s(void)
 {
-    static int cached;
-    if (!cached) {
-        const char *p;
-        cached = V_IDLE_S_DEFAULT;
-        p = v_pick(V_IDLESEC, V_IDLESEC_P);
-        if (p) {
-            FILE *f = fopen(p, "r");
-            if (f) {
-                int n = 0;
-                if (fscanf(f, "%d", &n) == 1 && n >= 1 && n <= 600) cached = n;
-                fclose(f);
-            }
-        }
-    }
-    return cached;
+    return v_secs(V_IDLESEC, V_IDLESEC_P, V_IDLE_S_DEFAULT);
 }
 
 /* Move out of the way by changing zorder. Why not simply tear the context down:

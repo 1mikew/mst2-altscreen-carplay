@@ -349,3 +349,27 @@ either centred as well (inset rule, and one rectangle is enough) or 155 px right
 Untested. Narrowing the rectangle from 700 to 390 is a large change and the phone may
 rescale its content rather than only move it, which would show up as a smaller map rather
 than a shifted one.
+
+
+## The freezes did not go away; they changed shape
+
+Moving the watchdog onto a clock, twice a second, left two thresholds expressed as counts
+of checks. Both silently changed meaning by the same factor the interval did:
+
+| path | before | after | what it does |
+|---|---|---|---|
+| `capture buffer = none` | 3 checks ≈ **75 s** | 10 checks = **5 s** | releases the cockpit |
+| composition stalled | 2 checks ≈ **50 s** | 2 checks = **1 s** | tears the context down |
+
+So the drive that reported no freezes was not a drive without stalls. The stalls were
+being caught within a second or two and answered by removing our window, which shows the
+stock map for as long as the rebuild takes. The frozen picture became a flip to the
+built-in map — a different symptom of the same fault, and a worse one in the case that
+has nothing to do with a fault at all: a parking camera or any other radio view stops the
+capture for as long as the driver leaves it up, and five seconds of that was read as a
+cluster that had lost its video connection.
+
+Both thresholds are wall-clock now, 60 s for no capture and 4 s for a stall, and
+settable from files. The stall recovery also has two stages: ask for a keyframe and leave
+the window in place, and only tear the context down if that did not help. The first stage
+is invisible to the driver, which is the point.

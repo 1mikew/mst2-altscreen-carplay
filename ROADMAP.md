@@ -24,7 +24,7 @@ on one car; everything else is not done.
 | ✅ | Mid-drive freezes | Baseline 27 Oct on the old library: 3–5 per drive. With the watchdog on a clock, twice a second: **none on the next drive**. One drive, so encouraging rather than settled — and some of the old count may have been stalls too short to notice once recovery got quick |
 | 🔬 | Startup delay | 10–30 s to first picture, and brief freezes that recover by themselves. Both plausibly wait on the same thing — an IDR, which Type-111 sends about every 29 s — but the logs already show a resync completing in ~150 ms, so that is a hypothesis, not a diagnosis. Measure before changing anything |
 | ⬜ | Extended road testing | Longer drives, connect/disconnect cycles, cold starts |
-| 🟡 | SafeArea / ViewArea *(fork)* | Honoured by the app and tunable from a file. Calibrated to `245 28 520 320`; centring still to be refined |
+| 🟡 | SafeArea / ViewArea *(fork)* | Honoured by the app and tunable from a file. The guiding rectangle `0 28 700 320` centres the map; the second view area for the idle state is declared but did not take effect on the road |
 | ⬜ | D2 tuning *(fork)* | Event-scoped recovery instead of the 1 s watchdog |
 | 🟡 | Steering-wheel zoom | **Both halves known, including the values.** In: BAP NavSD `MapScale`, decoded, step vs continuous. Out: `changeMapZoomLevel` with `uuid` and `zoomDirection` (0 in, 1 out), paced one step at a time, no acknowledgement. Needs writing. [docs/CLUSTER-ZOOM.md](docs/CLUSTER-ZOOM.md) |
 | ⛔ | Native navigation arrows / RGI | The BAP NavSD sink exists (`ManeuverDescriptor`, `LaneGuidance`, `TurnToInfo`), but nothing found in the image feeds it from CarPlay — `ExboxGuidanceListener` carries a guidance *state*, not manoeuvre data. No turn-by-turn path to the head unit. Not planned |
@@ -48,12 +48,13 @@ on one car; everything else is not done.
 
 The overlay is gone, so the picture can finally be judged on its own.
 
-1. 🟡 Cluster layout — centred while guiding, driven 26 Oct. Idle sits 155 px left,
-   because the phone centres in the rectangle when it has no route to push right. Two
-   view areas now declared and switched on the guidance mode — untested.
-   Previously: ✅ for the guiding case — `map` surface, SafeArea `0 28 700 320`. The
-   rectangle works as an offset against the phone's right bias, not as a frame to centre
-   content inside. Manoeuvre card deliberately left on the radio display
+1. 🟡 Cluster layout — one rectangle centres one state, not both. `0 28 700 320`
+   centres the map while guiding, driven 26 Oct; `155 28 700 320` centres it when idle.
+   The rectangle is an offset against the phone's right bias, not a frame to centre
+   content inside. Two view areas are declared for the two states and on the road they
+   did not take effect — the library's log says which half is missing, and it has not
+   been read yet. A single rectangle may still serve both; see docs/FINDINGS.md.
+   Manoeuvre card deliberately left on the radio display
 2. 🔬 Measure the startup delay and the freezes before touching D2
 3. 🟡 Raise the cluster frame rate past the hard-coded 10 — tooling ready, needs a car
 3. ⬜ Auto cleanup when the phone disconnects

@@ -23,8 +23,14 @@
 #   tools/set-safearea.sh <x> <y> <w> <h>       the idle rectangle
 #   tools/set-safearea.sh nav <x> <y> <w> <h>   the guiding one
 #   tools/set-safearea.sh nav off               drop it, back to one rectangle for both
+#   tools/set-safearea.sh turns <n>             how many turns count as guiding
 #   tools/set-safearea.sh show
 #   tools/set-safearea.sh reset                 back to the full canvas
+#
+# The guiding rectangle is only reached once the phone reports at least <n> turns. The
+# library's default is 2, and on the AID 10" a running route reports 1 -- so the switch
+# never fired and every state used the idle rectangle. Unlike the rectangles, this is read
+# when the library loads, so changing it needs a restart of the unit.
 #
 # Measured on the AID 10": guiding wants 0 28 700 320 (the zone 155 px left of centre, so
 # the phone's right-hand bias lands in the middle), idle wants 155 28 700 320 (the zone
@@ -34,17 +40,25 @@
 set -e; . "$(dirname "$0")/_common.sh"; need_link
 CFG=/tsd/var/cpvc/mibr-carplay111-safearea.conf
 NAV=/tsd/var/cpvc/mibr-carplay111-safearea-nav.conf
+TURNS=/tsd/var/cpvc/mibr-carplay111-turns-active
 W=1010; H=376
 TARGET=$CFG; WHICH=idle
 
 case "${1:-show}" in
 show)
     u "echo 'idle:'; cat $CFG 2>/dev/null || echo '  (none -- full canvas ${W}x${H})'
-       echo 'guiding:'; cat $NAV 2>/dev/null || echo '  (none -- the idle one is used for both)'"
+       echo 'guiding:'; cat $NAV 2>/dev/null || echo '  (none -- the idle one is used for both)'
+       echo \"turns counting as guiding: \$(cat $TURNS 2>/dev/null || echo '2 (library default)')\""
     exit 0 ;;
 reset)
     u "rm -f $CFG $NAV && echo 'SafeArea reset to the full canvas'"
     echo "Reconnect the phone to apply."
+    exit 0 ;;
+turns)
+    shift
+    [ $# -eq 1 ] && [ "$1" -ge 1 ] 2>/dev/null || { echo "usage: $0 turns <n>  (1 or more)"; exit 1; }
+    u "echo $1 > $TURNS; echo \"turns counting as guiding: \$(cat $TURNS)\""
+    echo "Read when the library loads -- restart the unit to apply."
     exit 0 ;;
 nav)
     shift

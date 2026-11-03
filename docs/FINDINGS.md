@@ -373,3 +373,38 @@ Both thresholds are wall-clock now, 60 s for no capture and 4 s for a stall, and
 settable from files. The stall recovery also has two stages: ask for a keyframe and leave
 the window in place, and only tear the context down if that did not help. The first stage
 is invisible to the driver, which is the point.
+
+
+## The view-area switch never fired: the threshold was two turns
+
+The symptom was "the map sits right while guiding and centred when idle", which is what a
+single rectangle looks like when it is the idle one. Three things could have caused it: the
+second area was never advertised, the guidance change was never noticed, or the phone
+ignored `updateViewArea`. The library's log, pulled off the unit before the 3 Nov reboot,
+rules out the first two:
+
+```
+GEN2 ViewArea[1] guiding safe=700x320@0,28
+GEN2 ViewArea[0] full=1010x376 safe=700x320@155,28 views=2
+GEN2 guidance turns=0 -> viewArea 0
+GEN2 guidance turns=1 -> viewArea 0
+```
+
+Both areas were advertised, and the guidance change *was* seen -- `turns` went 0 to 1 when
+the route started. It still chose area 0, because the threshold for "guiding" is two turns:
+
+```c
+static int g_turns_active = 2;
+...
+unsigned want = (parsed.turns >= g_turns_active) ? 1u : 0u;
+```
+
+On this unit a running route reports one turn, not two, so the comparison never held and
+every state used area 0. Nothing was wrong with the declaration or the send path; the
+threshold was simply above the value the phone reports.
+
+`mibr-carplay111-turns-active` overrides it, so no rebuild is needed -- but it is read in
+the library's constructor, so the unit has to be restarted for a change to take hold.
+
+What this does *not* yet establish is the third hypothesis: whether the phone acts on
+`updateViewArea` once it is actually sent. That needs a drive with the threshold at 1.

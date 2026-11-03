@@ -24,7 +24,7 @@ on one car; everything else is not done.
 | ✅ | Mid-drive freezes | Baseline 27 Oct on the old library: 3–5 per drive. With the watchdog on a clock, twice a second: **none on the next drive**. One drive, so encouraging rather than settled — and some of the old count may have been stalls too short to notice once recovery got quick |
 | 🔬 | Startup delay | 10–30 s to first picture, and brief freezes that recover by themselves. Both plausibly wait on the same thing — an IDR, which Type-111 sends about every 29 s — but the logs already show a resync completing in ~150 ms, so that is a hypothesis, not a diagnosis. Measure before changing anything |
 | ⬜ | Extended road testing | Longer drives, connect/disconnect cycles, cold starts |
-| 🟡 | SafeArea / ViewArea *(fork)* | Honoured by the app and tunable from a file. The guiding rectangle `0 28 700 320` centres the map; the second view area for the idle state is declared but did not take effect on the road |
+| 🟡 | SafeArea / ViewArea *(fork)* | Honoured by the app and tunable from a file. The guiding rectangle `0 28 700 320` centres the map. The second view area for the idle state is declared and the guidance change is noticed, but the switch never fired: the threshold is two turns and a running route reports one. `mibr-carplay111-turns-active` overrides it, and whether the phone then acts on `updateViewArea` is the untested half |
 | ⬜ | D2 tuning *(fork)* | Event-scoped recovery instead of the 1 s watchdog |
 | 🟡 | Steering-wheel zoom | **Both halves known, including the values.** In: BAP NavSD `MapScale`, decoded, step vs continuous. Out: `changeMapZoomLevel` with `uuid` and `zoomDirection` (0 in, 1 out), paced one step at a time, no acknowledgement. Needs writing. [docs/CLUSTER-ZOOM.md](docs/CLUSTER-ZOOM.md) |
 | ⛔ | Native navigation arrows / RGI | The BAP NavSD sink exists (`ManeuverDescriptor`, `LaneGuidance`, `TurnToInfo`), but nothing found in the image feeds it from CarPlay — `ExboxGuidanceListener` carries a guidance *state*, not manoeuvre data. No turn-by-turn path to the head unit. Not planned |
@@ -51,10 +51,11 @@ The overlay is gone, so the picture can finally be judged on its own.
 1. 🟡 Cluster layout — one rectangle centres one state, not both. `0 28 700 320`
    centres the map while guiding, driven 26 Oct; `155 28 700 320` centres it when idle.
    The rectangle is an offset against the phone's right bias, not a frame to centre
-   content inside. Two view areas are declared for the two states and on the road they
-   did not take effect — the library's log says which half is missing, and it has not
-   been read yet. A single rectangle may still serve both; see docs/FINDINGS.md.
-   Manoeuvre card deliberately left on the radio display
+   content inside. Two view areas are declared for the two states; the log says why the
+   switch never fired — the threshold is two turns and a running route reports one, so
+   every state used the idle area. `turns-active` at 1 is the next drive. A single
+   rectangle may still serve both; see docs/FINDINGS.md. Manoeuvre card deliberately
+   left on the radio display
 2. 🔬 Measure the startup delay and the freezes before touching D2
 3. 🟡 Raise the cluster frame rate past the hard-coded 10 — tooling ready, needs a car
 3. ⬜ Auto cleanup when the phone disconnects

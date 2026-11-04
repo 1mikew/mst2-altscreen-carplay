@@ -809,3 +809,14 @@ So when counting resyncs to judge the keyframe policy, check the attach
 generation first: `grep -c 'consumer attach'` and the `generation=` on the last
 one. A generation in the dozens means the resync rate is not telling you anything
 about D2.
+
+## Superseded commits
+
+Two commit messages in the history state things that later measurement on the
+unit contradicted. The code and the documents at HEAD are correct; only those
+messages are not, and they are left in place as the record of how it was measured.
+
+| commit | what it claims | what holds |
+|---|---|---|
+| `0a371b3` "Two frame-rate ceilings" | composition caps us at 13.5 fps as well as DisplayManager's 10 | one ceiling. With our stream live, composition runs 35–37 fps; the 13.5 was the built-in map repainting with no phone connected. Corrected by `1052f56` |
+| `2113eb4` "The rest of the startup delay was a 30 s retry of our own" | the 30 s attach interval caused the delay, and 2000 ms fixes it | the interval was not the cause — an unreset counter was — and 2000 ms blacked out the cockpit. Corrected by `ffe8090` and `da8ffa4` |

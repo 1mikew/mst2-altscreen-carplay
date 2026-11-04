@@ -594,3 +594,102 @@ That second ceiling is in our hands, though: the damage does not have to come fr
 stock map. A surface of our own, repainted at the rate we are pushing frames, would drive
 composition at our rate instead of the map's. Nothing has been built for that yet -- it is
 only worth building once something above 10 can actually reach the cluster.
+
+## The startup delay was our own reboot, not the CarPlay path
+
+Measured on 4 Nov, stationary, with the unit on the bench link. After
+`tools/deploy.sh` -- which reboots the head unit and nothing else -- the cockpit
+stream never starts:
+
+| state after a software reboot | reading |
+|---|---|
+| `capture buffer` on `dpy-6` | `(none)`, for four and a half minutes |
+| DisplayManager periodic timer | present but never armed (`0/0`) |
+| frames from the phone | arriving, `source_aus` climbing, 30 fps at the sink |
+| a route running | yes, `turns=1` |
+| a hand-sent `showUI` | accepted, `status=0`, changed nothing |
+
+The same unit with our library switched off (`tools/disable.sh permanent`) and
+rebooted the same way shows a black cockpit and the same `(none)`: not even the
+built-in map reaches the cluster. So this is not ours.
+
+Turning the ignition fully off and on instead settles it in one step. With our
+library still disabled, the cockpit came up on its own:
+
+    timer 0  MONO --a  29029/100000
+    capture buffer = win-24
+
+`win-24` is the same buffer seen on the working drive of 3 Nov. The cluster
+negotiates the cockpit stream when it and the head unit come up together; a
+head-unit-only reboot leaves the cluster booted and waiting for a stream nobody
+offers again, and only a source change in the car's own menu asks for it afresh.
+
+What this retires:
+
+* The "20-30 s before the map appears" was never a wait for anything in the
+  stream. It was the time it took to reach for the map-source setting.
+* The splash could not have covered it. Nothing we draw reaches the cluster
+  while DisplayManager is not capturing, which is exactly what our sink logs:
+  `waiting for DisplayManager to start capturing the cockpit`.
+* `suggestUI` was not the gate either. Frames, a route and an accepted `showUI`
+  were all in place while the cockpit stayed dark.
+
+For developers: after `tools/deploy.sh`, either cycle the ignition or change the
+map source in the car once. Driving away after a deployment hides this, because
+starting the car power-cycles the unit anyway.
+
+## `capture buffer` is not a reliable sign that the cluster is being fed
+
+While a map source was switched away and back, the DisplayManager timer and the
+capture buffer disagreed:
+
+| time | periodic timer | `capture buffer` |
+|---|---|---|
+| 20:26:29 | timer 0 armed, 100000 | `win-29` |
+| 20:26:50 | timer 0 **disarmed**, `0/0` | `win-29` |
+| 20:27:35 | timer 0 disarmed, new timer 1 armed | `win-29` |
+
+The buffer stayed set across a stop. Our sink gates on the buffer, so in that
+window it believes all is well and keeps pushing frames while nothing reaches
+the cluster -- which looks exactly like a frozen cockpit. DisplayManager creates
+a fresh timer on each restart and leaves the old one disarmed, so the count of
+armed timers, not the buffer, is what says whether the cluster is being fed.
+
+## One frame-rate ceiling, not two
+
+The 13.5 fps figure in ARCHITECTURE.md was measured with no phone connected: it
+is the rate at which the built-in map alone repaints. With our stream live,
+measured over 20 s:
+
+| stage | rate |
+|---|---|
+| phone to the sink | 600 NALs / 20 s = **30 fps**, `errors=0` |
+| `dpy-6` composition | 700 frames / 20 s = **35 fps** |
+| DisplayManager to the cluster | **10 fps** |
+
+So composition is not a ceiling and there is nothing behind the 10 to hit next.
+
+The 10 has a handle. DisplayManager is a native, dynamically linked ARM binary
+(`/tsd/bin/displaymanager/tsd.mibstd2.system.displaymanager`), it imports no
+display-rate setter at all, and it imports `timer_create`/`timer_settime`.
+`pidin -p<pid> timers` shows exactly one armed periodic timer while the cluster
+is being fed, at `100000` -- microseconds, so 100 ms, so 10 Hz. Milliseconds
+would be a frame every 100 s and nanoseconds 10 000 fps, so the unit is not in
+doubt. The timer is armed when streaming starts and disarmed when it stops.
+
+Its `cpu.conf` block already carries the same kind of entry we use for SAL:
+
+    service iMX6.DispMg
+       envar LD_PRELOAD /lib/libmmappriofix.so.1
+
+Untried, and not to be tried on a car that has to drive the next day: a hook on
+`timer_settime` that divides the interval. Two unknowns remain -- whether the
+cluster accepts more than 10 fps over MOST at all (the built-in map gets the
+same 10), and that the block carries `restart global 3`, so a hook that crashes
+DisplayManager repeatedly takes the whole unit down.
+
+Static analysis of the binary got no further: Apple's `objdump` rejects the QNX
+ELF ("invalid section index: 37"), and the two log strings
+(`] update rate set to `, `Failed to set update rate of display `) are
+referenced neither by a literal-pool word nor by an ARM or Thumb-2 `movw`/`movt`
+pair, so the call site was not found without a working ARM disassembler.

@@ -17,8 +17,9 @@
 #
 # The phone lays the cluster out differently depending on what it is doing: it centres its
 # content in the rectangle when idle, and pushes it to the right while guiding. One
-# rectangle therefore cannot serve both, so a second one can be given for guiding and the
-# two are declared as separate view areas, switched as the mode changes.
+# rectangle therefore cannot serve both. A second one can be given for guiding, and the two
+# are declared as separate view areas switched as the mode changes -- but MEASURED 4 Nov,
+# that second rectangle does nothing: see the note below before spending time on it.
 #
 #   tools/set-safearea.sh <x> <y> <w> <h>       the idle rectangle
 #   tools/set-safearea.sh nav <x> <y> <w> <h>   the guiding one
@@ -32,9 +33,20 @@
 # never fired and every state used the idle rectangle. Unlike the rectangles, this is read
 # when the library loads, so changing it needs a restart of the unit.
 #
-# Measured on the AID 10": guiding wants 0 28 700 320 (the zone 155 px left of centre, so
-# the phone's right-hand bias lands in the middle), idle wants 155 28 700 320 (the zone
-# centred, because the phone centres within it).
+# MEASURED 4 Nov on the AID 10", and this retires the idea of two rectangles: the guiding
+# rectangle is inert. With the idle one at 155 and the guiding one set to 0, then 155, then
+# 310 -- a 310 px span -- the picture while guiding did not move by a pixel, and the switch
+# itself was in the log 16 ms after the mode change. Setting the IDLE rectangle to 0 then
+# centred the guiding picture, with the guiding rectangle still at 310. So the phone uses
+# the first view area's rectangle in both states and accepts updateViewArea without acting
+# on it.
+#
+# One rectangle therefore has to serve both, and the two states want different ones:
+#
+#   0 28 700 320     guiding centred, idle sits left   <- chosen; guiding is what matters
+#   155 28 700 320   idle centred, guiding sits right
+#
+# Anything between is untested and would centre neither.
 #
 # The phone reads this when the session starts, so reconnect it afterwards.
 set -e; . "$(dirname "$0")/_common.sh"; need_link

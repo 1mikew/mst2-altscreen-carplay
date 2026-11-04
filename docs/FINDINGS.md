@@ -732,3 +732,56 @@ further attaches followed at 614.7 and 632.1 -- 17 s apart, so not this retry
 loop but the other call site, and the sink kept pushing at 30 fps with
 `errors=0` throughout. The failure the 30 s was guarding against -- the push rate
 stuck at 0/s -- did not appear.
+
+## The second view area is inert: the two states cannot both be centred
+
+Two things were wrong with the idle state, and fixing the first exposed that the
+second is not fixable the way we assumed.
+
+**The switch really was broken.** `g_turns_active` defaults to 2 and a running
+route on the AID 10" reports `turns=1`, so `(parsed.turns >= g_turns_active)` was
+false in every state and both fell back to the idle rectangle. With
+`tools/set-safearea.sh turns 1` and a guiding rectangle configured, it fires:
+
+    GEN2 ViewArea[1] guiding safe=700x320@0,28
+    GEN2 ViewArea[0] full=1010x376 safe=700x320@155,28 views=2
+    GEN2 guidance turns=0 -> viewArea 0
+    GEN2 guidance turns=1 -> viewArea 1
+
+The switch is sent 16 ms after the mode change, and it is sent only on a *change*
+of turns (`delta & (1u<<5)`), so at session start with no route nothing is sent
+and the phone takes index 0.
+
+**And it changes nothing.** With the idle rectangle at 155, the guiding one was
+set to 0, then 155, then 310 -- a 310 px span, the full width the canvas allows --
+and the picture while guiding did not move by a pixel each time. Setting the
+*idle* rectangle to 0 then centred the guiding picture, with the guiding
+rectangle still sitting at 310. So the phone uses the first view area's rectangle
+in both states, and accepts `updateViewArea` without acting on it.
+
+| idle rect | guiding rect | no route | with a route |
+|---|---|---|---|
+| 0 | none | left of centre | **centred** |
+| 155 | 0 | **centred** | right |
+| 155 | 155 | **centred** | right |
+| 155 | 310 | **centred** | right |
+| 0 | 310 | left of centre | **centred** |
+
+One rectangle therefore has to serve both, and the two states want different ones,
+so only one can be centred:
+
+    0 28 700 320     guiding centred, idle sits left
+    155 28 700 320   idle centred, guiding sits right
+
+Chosen: `0 28 700 320`, one view area, guiding centred. Guiding is the state the
+cluster map exists for, and a compromise between the two would centre neither.
+
+What this retires: the whole two-rectangle design in `set-safearea.sh`. The
+switch, the threshold and the `nav` rectangle all work as written and buy nothing
+on this head unit. The note in that tool has been corrected so the next attempt
+starts from the measurement rather than from the intention.
+
+## Releasing on disconnect does bring the built-in map back
+
+Open until now. Observed on the cluster: unplugging the phone drops straight to
+the built-in map, with no frozen last frame left behind.

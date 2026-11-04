@@ -795,3 +795,17 @@ starts from the measurement rather than from the intention.
 
 Open until now. Observed on the cluster: unplugging the phone drops straight to
 the built-in map, with no frozen last frame left behind.
+
+## A resync storm can be a symptom of attach churn, not of the D2 policy
+
+During the 2 s attach experiment the log filled with `GEN2 RESYNC REQUEST`, about
+one a second, reaching epoch 101 -- which looks exactly like the keyframe
+metronome coming back. It was not. With the interval back at 30 s the same
+session ran **0 resyncs in 20 s** while the sink pushed 300 NALs per 10 s. The
+resyncs were driven by the attach loop discarding priming and asking for a
+keyframe each time it started over.
+
+So when counting resyncs to judge the keyframe policy, check the attach
+generation first: `grep -c 'consumer attach'` and the `generation=` on the last
+one. A generation in the dozens means the resync rate is not telling you anything
+about D2.

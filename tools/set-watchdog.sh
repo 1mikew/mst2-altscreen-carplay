@@ -5,7 +5,7 @@
 #   tools/set-watchdog.sh nocapture <s>   DisplayManager has stopped capturing
 #   tools/set-watchdog.sh attach <ms>     what a failed consumer attach costs, in MILLISECONDS
 #   tools/set-watchdog.sh show
-#   tools/set-watchdog.sh reset           back to the built-in 4 s, 60 s and 2000 ms
+#   tools/set-watchdog.sh reset           back to the built-in 4 s, 60 s and 30000 ms
 #
 # All of them are read from their file while the library runs, so a change takes effect at
 # once -- no reboot, no reconnect. The two in seconds accept 1 to 3600; anything outside
@@ -21,11 +21,16 @@
 #
 # Dropouts that continue after that are not ours.
 #
-# "attach" is the odd one out: milliseconds, and it governs how long the cluster keeps
-# showing the built-in map before our picture takes over. It was 30 s hard-coded, on the
-# belief that a shorter retry would keep discarding priming; that measurement did not
-# hold, so it is 2000 ms now. Raise it only if the push rate sticks at 0/s, which is the
-# failure the old 30 s was guarding against.
+# "attach" is the odd one out: milliseconds, and it is how long a FAILED attach waits
+# before the next try. It is not the delay before the first picture -- that was a counter
+# that never got reset, fixed in the library, so the first attach of every session now
+# happens at once whatever this says.
+#
+# Leave it at 30000. Lowering it to 2000 was measured on the unit and the cockpit went
+# black: 80 attaches, generation 82, 61 resyncs a second, frames arriving and the sink
+# pushing nothing. Attach discards priming in progress and priming takes longer than two
+# seconds, so a fast retry never lets it finish. A short value is an experiment and needs
+# attach to leave a running priming alone first, which is not implemented.
 set -e; . "$(dirname "$0")/_common.sh"; need_link
 D=/tsd/var/cpvc
 STALL=$D/stall-seconds
@@ -39,7 +44,7 @@ show)
        echo \"attach:    \$(cat $ATTACH 2>/dev/null || echo '2000 (built in)') ms\""
     exit 0 ;;
 reset)
-    u "rm -f $STALL $NOCAP $ATTACH && echo 'back to the built-in 4 s, 60 s and 2000 ms'"
+    u "rm -f $STALL $NOCAP $ATTACH && echo 'back to the built-in 4 s, 60 s and 30000 ms'"
     exit 0 ;;
 attach)
     MS="${2:-}"

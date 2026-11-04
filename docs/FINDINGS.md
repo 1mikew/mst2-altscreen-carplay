@@ -408,3 +408,51 @@ the library's constructor, so the unit has to be restarted for a change to take 
 
 What this does *not* yet establish is the third hypothesis: whether the phone acts on
 `updateViewArea` once it is actually sent. That needs a drive with the threshold at 1.
+
+
+## Drive of 3 Nov: centring fixed, the dropouts are not
+
+With one rectangle cut for guiding (`0 28 700 320`, surface `map`) and the watchdog on
+wall-clock thresholds, 60 s for a stopped capture and 4 s for a stalled composition:
+
+| | observed |
+|---|---|
+| centring | correct, both while guiding and while idle |
+| frame rate | about 10 fps, as before |
+| first picture | 20-30 s after connecting, unchanged |
+| splash | never appeared |
+| mid-drive | drops to the stock map for 1-5 s, sometimes longer, then comes back. More often at speed, outside town |
+
+So raising the thresholds did not cure the dropouts, and the drive before this one, which
+reported none, remains the odd one out rather than the new baseline.
+
+**What a dropout to the *stock map* means.** A stalled stream leaves our last frame on the
+cluster. For the stock map to become visible our window has to be gone from the dpy-6
+composition, which only happens when something removes it: the watchdog's teardown, the
+idle action, or the session going away. That narrows the causes to three, and each writes
+a distinct line, so one log read separates them:
+
+| line in `/tmp/altscreen111.log` | cause |
+|---|---|
+| `composition stalled ... requesting a keyframe` then `still stalled ... tearing the context down` | our stall path, 8 s in total |
+| `DisplayManager stopped capturing` | the capture path, 60 s |
+| `session torn down` / `no frames for 30 s` | the idle action, with `on-disconnect=release` |
+| none of the above around the dropout | something outside this library removes or covers our window |
+
+A 1-5 s outage is shorter than any of our own paths needs to fire, which makes the fourth
+row the one to beat -- but the stall timer can already have been running before the
+picture visibly froze, so it cannot be ruled out from the duration alone.
+
+**The cheap experiment, no rebuild.** `stall-seconds` is read from the file on every check,
+so setting it high enough that the teardown can never fire is a live change:
+`tools/set-watchdog.sh stall 600`. If the dropouts continue, our watchdog is not removing
+the window and the cause is outside it. If they stop and turn into frozen pictures
+instead, it was us, and the answer is to stop tearing down on a stall at all -- a frozen
+map is worse than a moving one but far better than the stock map coming back.
+
+**The splash and the 20-30 s both point at the same gate.** The splash is held back until
+DisplayManager is capturing, and the picture waits for a keyframe. If the capture
+connection only comes up at about the time the first natural IDR arrives -- Type-111 sends
+one roughly every 29 s -- then both observations are one fact, and the keyframe we request
+while waiting is being asked for before the control path can carry it. The log now says
+when the splash is held back, which settles it.

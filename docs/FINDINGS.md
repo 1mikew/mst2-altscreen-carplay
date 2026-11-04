@@ -693,3 +693,42 @@ ELF ("invalid section index: 37"), and the two log strings
 (`] update rate set to `, `Failed to set update rate of display `) are
 referenced neither by a literal-pool word nor by an ARM or Thumb-2 `movw`/`movt`
 pair, so the call site was not found without a working ARM disassembler.
+
+## The last of the startup delay was a 30 s retry of our own
+
+With the reboot artefact understood, a second delay was left: the cluster kept the
+built-in map for about half a minute after the phone connected. The log showed it
+as a silence between the first frame and the consumer attaching:
+
+    1793825042.057  SETUP stock result=0 response=yes
+                    ... 30.7 s of nothing ...
+    1793825072.727  gen2 renderer consumer attach rc=0 generation=3
+
+The cause was in `gen2_output_worker`:
+
+    if ((retry++ % 6000u) == 0u) gen2_consumer_attach();
+    ...
+    usleep(5000);
+
+6000 passes of 5 ms is exactly 30 s. The comment above it explained the choice:
+Type-111 was believed to send a keyframe only about once every 29 s, so a shorter
+retry would keep discarding priming that had not finished. That premise does not
+hold -- `forceKeyFrame` is answered in about 140 ms, and the attach already
+signals keyframe intent -- so the interval bought nothing. Worse, the counter is
+not reset on a failed attempt, so one failure costs up to a full 30 s.
+
+Now `g2_attach_retry_ms`, 2000 ms by default, re-read from
+`mibr-alt111-attach-retry-ms` once a second while unattached, so it can be
+retuned at the car without a build or a restart (`tools/set-watchdog.sh attach`).
+
+Measured after the change, on a cold start with the phone connected afterwards:
+
+    1793825601.152  attach rc=1 generation=0   (five tries while no stream exists)
+    1793825606.748  first complete Screen VIDEO_FRAME accepted as AU
+    1793825606.809  attach rc=0 generation=3
+
+**61 ms** from the first frame to the consumer attaching, against 30.7 s. Two
+further attaches followed at 614.7 and 632.1 -- 17 s apart, so not this retry
+loop but the other call site, and the sink kept pushing at 30 fps with
+`errors=0` throughout. The failure the 30 s was guarding against -- the push rate
+stuck at 0/s -- did not appear.

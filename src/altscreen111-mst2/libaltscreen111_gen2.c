@@ -353,6 +353,17 @@ static const char *g2_d2_persist_marker = MIBR_PERSIST_DIR "mibr-alt111-keyframe
 static unsigned g2_d2_watchdog_ms = 1000u;
 static const char *g2_d2_watchdog_ms_path = MIBR_PERSIST_DIR "mibr-alt111-d2-watchdog-ms";
 
+/* What a failed consumer attach costs us. This was 30 s, chosen on the belief that
+ * Type-111 sends a keyframe only about once every 29 s, so that a shorter retry would
+ * keep throwing away priming that had not finished. Measured on 4 Nov: forceKeyFrame is
+ * honoured in about 140 ms, the attach itself signals keyframe intent, and priming
+ * completes at once -- so the long interval bought nothing and cost everything. It showed
+ * up as a 30.7 s silence in the log between the first accepted frame and generation 3
+ * attaching, during which the cluster kept the built-in map. Re-read once a second while
+ * unattached, so it can be retuned at the car without a restart. */
+static unsigned g2_attach_retry_ms = 2000u;
+static const char *g2_attach_retry_ms_path = MIBR_PERSIST_DIR "mibr-alt111-attach-retry-ms";
+
 static unsigned g2_d2_was_enabled;
 static unsigned g2_d2_pending_sources;
 static uint64_t g2_d2_pending_due_ms;
@@ -1256,6 +1267,15 @@ static void gen2_consumer_attach(void)
     gen2_publish_status();
 }
 
+static void gen2_attach_retry_reload(void)
+{
+    char v[32];
+    if (read_trimmed_value(g2_attach_retry_ms_path, v, sizeof(v)) == 0) {
+        int t = atoi(v);
+        if (t >= 100 && t <= 120000) g2_attach_retry_ms = (unsigned)t;
+    }
+}
+
 static void *gen2_output_worker(void *arg)
 {
     uint8_t *copy = NULL;
@@ -1290,16 +1310,19 @@ static void *gen2_output_worker(void *arg)
              * without an external alt111-dump the stream never started at all. When our
              * cockpit sink is running, attach on our own. */
             /* MIND THE INTERVAL: gen2_consumer_attach() detaches and re-attaches the
-             * consumer, discarding any priming in progress. Type-111 sends a keyframe only
-             * about once every 29 s, so retrying every 2 s meant priming NEVER completed
-             * and the stream never started (consumer_gen climbed into the dozens while our
-             * push rate stayed at 0/s). Hence roughly once every 30 s. */
+             * consumer, discarding any priming in progress. That is why this is not run on
+             * every pass. The interval itself is g2_attach_retry_ms -- see the note there
+             * for why the 30 s it used to be rested on a measurement that did not hold. */
             if (!attached && vc111_wants_data()) {
                 static unsigned retry;
-                if ((retry++ % 6000u) == 0u) gen2_consumer_attach();
+                unsigned period = g2_attach_retry_ms / 5u;   /* this loop sleeps 5 ms */
+                if (period < 1u) period = 1u;
+                if ((retry++ % period) == 0u) gen2_consumer_attach();
             }
-            /* about once a second: clean the window off the cockpit if frames stopped */
-            { static unsigned idle; if ((idle++ % 200u) == 0u) vc111_idle_tick(); }
+            /* about once a second: clean the window off the cockpit if frames stopped,
+             * and pick up a retuned attach interval */
+            { static unsigned idle;
+              if ((idle++ % 200u) == 0u) { vc111_idle_tick(); gen2_attach_retry_reload(); } }
             usleep(5000);
             continue;
         }
@@ -3664,6 +3687,8 @@ static void altscreen111_init(void)
             if(t>=100 && t<=600000) g2_d2_watchdog_ms=(unsigned)t;
         }
     }
+    g2_attach_retry_ms=(unsigned)env_i("ALTSCREEN111_ATTACH_RETRY_MS",2000);
+    gen2_attach_retry_reload();
     if(alt111_profile_validate(&g2_profile)!=ALT111_OK){
         g_enabled=0;
         logf_u2("gen2 runtime profile validation failed; disabled fail-closed");

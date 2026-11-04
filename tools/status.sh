@@ -19,3 +19,7 @@ grep -E 'ViewArea|guidance turns' /tmp/altscreen111.log 2>/dev/null | tail -6 ||
 C1=$(u "grep counter /dev/screen/0/dpy-6" 2>/dev/null | grep -oE '[0-9]+$'); sleep 8
 C2=$(u "grep counter /dev/screen/0/dpy-6" 2>/dev/null | grep -oE '[0-9]+$')
 echo "== cockpit composition: $(echo "scale=1; ($C2-$C1)/8" | bc) fps"
+
+# The rate the cluster actually gets is the smaller of two: DisplayManager's own update
+# rate and how often dpy-6 is composited. Print both reference points for the latter.
+echo "== note: 10 fps is DisplayManager's limit; the number above is dpy-6 composition"

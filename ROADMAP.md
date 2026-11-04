@@ -28,7 +28,7 @@ on one car; everything else is not done.
 | 🟡 | D2 tuning *(fork)* | The 1 s watchdog is off the keyframe counter and onto the frame counter — see docs/FINDINGS.md. `forceKeyFrame` is honoured in ~140 ms every time, so recovery can stay on demand instead of scheduled |
 | 🟡 | Steering-wheel zoom | **Both halves known, including the values.** In: BAP NavSD `MapScale`, decoded, step vs continuous. Out: `changeMapZoomLevel` with `uuid` and `zoomDirection` (0 in, 1 out), paced one step at a time, no acknowledgement. Needs writing. [docs/CLUSTER-ZOOM.md](docs/CLUSTER-ZOOM.md) |
 | ⛔ | Native navigation arrows / RGI | The BAP NavSD sink exists (`ManeuverDescriptor`, `LaneGuidance`, `TurnToInfo`), but nothing found in the image feeds it from CarPlay — `ExboxGuidanceListener` carries a guidance *state*, not manoeuvre data. No turn-by-turn path to the head unit. Not planned |
-| 🟡 | **Raise the frame rate** | The cluster sends a *mode*, not a rate: `ChangeDataRateSequence` maps mode 2 to a hard-coded `setDataFrameRate(10)`. Tooling ready — `make-fps-patch.py` flips the byte, `set-cluster-fps.sh` puts it in the override jar and verifies it. Whether the cluster accepts more is still unanswered; try it parked |
+| 🔬 | **Raise the frame rate** | **Two ceilings, and both have to move.** The HMI's `setDataFrameRate(10)` caps what reaches the cluster; `dpy-6` composition runs at only 13.5 fps because it is driven by the stock map's redraw. The byte-patch tool is written but has no input: the class is not in the override jar and `MIBHMI.jxe` carries no classfiles at all (zero `CAFEBABE` in 42 MB). Next step is recon for a runtime `setDataFrameRate`, not a jar patch. [docs/FINDINGS.md](docs/FINDINGS.md) |
 | ⬜ | Other firmware | Wanted, but only `P0480T` can be tested here — no other unit available |
 | ⛔ | `/dev/mlb` transport | No such device on this platform |
 
@@ -36,7 +36,7 @@ on one car; everything else is not done.
 
 | | |
 |---|---|
-| Frame rate | 10 fps, from a constant in the HMI rather than a negotiated limit. Whether the cluster accepts more is untested |
+| Frame rate | 10 fps to the cluster, from a constant in the HMI; `dpy-6` composition is a second ceiling at 13.5 fps, inherited from the stock map's redraw rate. The phone sends 30 |
 | After disconnect | Last frame remains; switching the cockpit view clears it |
 | Mid-drive dropout | The cluster falls back to the stock map for 1–5 s, sometimes longer, then our picture returns on its own. More frequent at speed outside town. Unexplained — see docs/FINDINGS.md |
 | Startup delay | 10–30 s from connecting the phone to a picture on the cluster |
@@ -61,7 +61,8 @@ The overlay is gone, so the picture can finally be judged on its own.
    stall 600` rules our own teardown in or out
 3. 🔬 `touch /tmp/mibr-alt111-show-only` against the 20–30 s startup, with the phone
    connected and no route started — the one measurement that decides the splash too
-4. 🟡 Raise the cluster frame rate past the hard-coded 10 — tooling ready, needs a car
+4. 🔬 Raise the cluster frame rate — recon first: a runtime handle on `setDataFrameRate`,
+   since the classfile for a jar patch does not exist on this unit
 5. ⬜ Auto cleanup when the phone disconnects
 6. ⬜ Extended road testing *(gate for everything below)*
 7. ⬜ Steering-wheel control *(fork)*

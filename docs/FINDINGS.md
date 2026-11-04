@@ -550,3 +550,47 @@ of either kind, which is the proof.
 
 Covering that gap means driving the splash from the session lifecycle instead. Worth doing
 only if `showUI` turns out not to shorten the wait.
+
+
+## Why 30 fps in and 10 on the cluster: two ceilings, not one
+
+The numbers that get quoted -- 30, 13, 10 -- are three different places in the chain, and
+only the smallest matters.
+
+| stage | rate | set by |
+|---|---|---|
+| phone to us, stream 111 | 30 fps (611 access units in 20.3 s) | the phone, we advertise `maxFPS=30` |
+| our decoded picture | 30 fps, on a hardware video plane, scanned out without composition | the decoder |
+| `dpy-6` composition | 13.4-13.5 fps | **damage from the stock map underneath** |
+| DisplayManager to the cluster | **10 fps** | `setDataFrameRate(10)` in the HMI |
+
+Two of those are ceilings we have to beat, and beating one alone changes nothing.
+
+**The 10.** `DisplayQNXScreen [DISPLAYID_CLUSTER] update rate set to 10` comes from the
+`bipush 10` in `ChangeDataRateSequence`. Patching it is a one-byte edit of a classfile we
+do not have:
+
+- the stock override jar on the unit holds exactly two classes, `CarPlayModeHandling` and
+  `RequestHandler` -- which is why the overlay patch was possible: that class was already
+  there as plain bytecode;
+- `MIBHMI.jxe` contains **no classfiles at all**. A scan of all 42 MB finds zero
+  `CAFEBABE` magics and only the class *names* in a string table. It is a fully AOT
+  compiled image.
+
+So `make-fps-patch.py` has nothing to chew on, and "tooling ready" was too generous: the
+tool is written, the input is missing. Getting it needs `jxe2jar`, or another firmware that
+ships `mostkombi` as a jar, or a way to call `setDataFrameRate` at runtime -- which is the
+one worth looking for first, because it would need no HMI patch at all. Reconnaissance for
+it is read-only: what `/pps/services` exposes around display management, and what the
+DisplayManager binary and its start script carry in the way of a rate setting.
+
+**The 13.5.** Our picture is on a video plane that needs no composition, but DisplayManager
+captures *during* composition, and composition is driven by damage from the stock content
+below. The stock map redraws at about 13.4 fps and that is what we inherit -- the one
+deliberately unpainted pixel is what keeps even that alive. So raising the HMI constant to
+30 would land on a composition that still only runs at 13.5.
+
+That second ceiling is in our hands, though: the damage does not have to come from the
+stock map. A surface of our own, repainted at the rate we are pushing frames, would drive
+composition at our rate instead of the map's. Nothing has been built for that yet -- it is
+only worth building once something above 10 can actually reach the cluster.

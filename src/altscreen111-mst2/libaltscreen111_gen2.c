@@ -353,15 +353,22 @@ static const char *g2_d2_persist_marker = MIBR_PERSIST_DIR "mibr-alt111-keyframe
 static unsigned g2_d2_watchdog_ms = 1000u;
 static const char *g2_d2_watchdog_ms_path = MIBR_PERSIST_DIR "mibr-alt111-d2-watchdog-ms";
 
-/* What a failed consumer attach costs us. This was 30 s, chosen on the belief that
- * Type-111 sends a keyframe only about once every 29 s, so that a shorter retry would
- * keep throwing away priming that had not finished. Measured on 4 Nov: forceKeyFrame is
- * honoured in about 140 ms, the attach itself signals keyframe intent, and priming
- * completes at once -- so the long interval bought nothing and cost everything. It showed
- * up as a 30.7 s silence in the log between the first accepted frame and generation 3
- * attaching, during which the cluster kept the built-in map. Re-read once a second while
- * unattached, so it can be retuned at the car without a restart. */
-static unsigned g2_attach_retry_ms = 2000u;
+/* What a failed consumer attach costs us, and why it is still 30 s.
+ *
+ * The reason given for the 30 s was wrong: Type-111 does not send a keyframe only every
+ * 29 s, and forceKeyFrame is honoured in about 140 ms. On a clean cold start 2000 ms is a
+ * large win -- measured 61 ms from the first frame to the attach, against a 30.7 s silence
+ * before. But the mechanism the 30 s protected is real and it is not about keyframes:
+ * gen2_consumer_attach() discards any priming in progress, and priming itself takes longer
+ * than 2 s. Across repeated reconnects that turns into a loop -- measured on 4 Nov, 80
+ * attaches, generation 82, 61 resyncs at about one a second, frames arriving and the sink
+ * pushing nothing at all, cockpit black.
+ *
+ * So the default stays at the value that is known to work. A shorter one is an experiment,
+ * not a setting: it needs attach to leave priming alone while priming is running, which is
+ * not implemented. Re-read once a second while unattached, so it can be tried at the car
+ * without a build -- tools/set-watchdog.sh attach. */
+static unsigned g2_attach_retry_ms = 30000u;
 static const char *g2_attach_retry_ms_path = MIBR_PERSIST_DIR "mibr-alt111-attach-retry-ms";
 
 static unsigned g2_d2_was_enabled;
@@ -1310,14 +1317,27 @@ static void *gen2_output_worker(void *arg)
              * without an external alt111-dump the stream never started at all. When our
              * cockpit sink is running, attach on our own. */
             /* MIND THE INTERVAL: gen2_consumer_attach() detaches and re-attaches the
-             * consumer, discarding any priming in progress. That is why this is not run on
-             * every pass. The interval itself is g2_attach_retry_ms -- see the note there
-             * for why the 30 s it used to be rested on a measurement that did not hold. */
-            if (!attached && vc111_wants_data()) {
+             * consumer, discarding any priming in progress, and priming takes longer than
+             * a couple of seconds -- so this must not run on every pass. The interval is
+             * g2_attach_retry_ms; see the note there for what happens when it is short.
+             *
+             * The counter is reset when a session starts wanting data, which is what was
+             * actually wrong here. It used to persist across sessions, so where it stood
+             * relative to the period decided how long the first attach waited: measured
+             * once as a 30.7 s silence and once as 61 ms, from the same build and the same
+             * interval. A reset makes the first attempt of every session immediate and
+             * leaves the backoff for the retries, where it belongs. */
+            {
                 static unsigned retry;
-                unsigned period = g2_attach_retry_ms / 5u;   /* this loop sleeps 5 ms */
-                if (period < 1u) period = 1u;
-                if ((retry++ % period) == 0u) gen2_consumer_attach();
+                static int was_wanting;
+                int wanting = vc111_wants_data() ? 1 : 0;
+                if (wanting && !was_wanting) retry = 0;   /* new session: try at once */
+                was_wanting = wanting;
+                if (!attached && wanting) {
+                    unsigned period = g2_attach_retry_ms / 5u;   /* this loop sleeps 5 ms */
+                    if (period < 1u) period = 1u;
+                    if ((retry++ % period) == 0u) gen2_consumer_attach();
+                }
             }
             /* about once a second: clean the window off the cockpit if frames stopped,
              * and pick up a retuned attach interval */
@@ -3687,7 +3707,7 @@ static void altscreen111_init(void)
             if(t>=100 && t<=600000) g2_d2_watchdog_ms=(unsigned)t;
         }
     }
-    g2_attach_retry_ms=(unsigned)env_i("ALTSCREEN111_ATTACH_RETRY_MS",2000);
+    g2_attach_retry_ms=(unsigned)env_i("ALTSCREEN111_ATTACH_RETRY_MS",30000);
     gen2_attach_retry_reload();
     if(alt111_profile_validate(&g2_profile)!=ALT111_OK){
         g_enabled=0;

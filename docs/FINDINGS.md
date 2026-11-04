@@ -694,44 +694,54 @@ ELF ("invalid section index: 37"), and the two log strings
 referenced neither by a literal-pool word nor by an ARM or Thumb-2 `movw`/`movt`
 pair, so the call site was not found without a working ARM disassembler.
 
-## The last of the startup delay was a 30 s retry of our own
+## The first consumer attach was a lottery, not a long interval
 
-With the reboot artefact understood, a second delay was left: the cluster kept the
-built-in map for about half a minute after the phone connected. The log showed it
-as a silence between the first frame and the consumer attaching:
+After the reboot artefact, a second delay was left: the cluster sometimes kept the
+built-in map for half a minute after the phone connected. The log showed it as a
+silence between the first frame and the consumer attaching:
 
     1793825042.057  SETUP stock result=0 response=yes
                     ... 30.7 s of nothing ...
     1793825072.727  gen2 renderer consumer attach rc=0 generation=3
 
-The cause was in `gen2_output_worker`:
+In `gen2_output_worker`:
 
+    static unsigned retry;
     if ((retry++ % 6000u) == 0u) gen2_consumer_attach();
     ...
     usleep(5000);
 
-6000 passes of 5 ms is exactly 30 s. The comment above it explained the choice:
-Type-111 was believed to send a keyframe only about once every 29 s, so a shorter
-retry would keep discarding priming that had not finished. That premise does not
-hold -- `forceKeyFrame` is answered in about 140 ms, and the attach already
-signals keyframe intent -- so the interval bought nothing. Worse, the counter is
-not reset on a failed attempt, so one failure costs up to a full 30 s.
+6000 passes of 5 ms is 30 s, and the comment defending it said Type-111 sends a
+keyframe only about once every 29 s so a shorter retry would discard priming.
 
-Now `g2_attach_retry_ms`, 2000 ms by default, re-read from
-`mibr-alt111-attach-retry-ms` once a second while unattached, so it can be
-retuned at the car without a build or a restart (`tools/set-watchdog.sh attach`).
+**Two things were wrong, and only one of them was the interval.**
 
-Measured after the change, on a cold start with the phone connected afterwards:
+The stated reason does not hold: `forceKeyFrame` is answered in about 140 ms and
+the attach signals keyframe intent. But the *mechanism* it protected is real and
+has nothing to do with keyframes -- `gen2_consumer_attach()` discards priming in
+progress, and priming itself takes longer than two seconds. Shortening the
+interval to 2000 ms was tried on the unit and it collapsed: **80 attaches,
+generation 82, 61 resyncs at about one a second, frames arriving, the sink
+pushing nothing at all, the cockpit black.** That is exactly the failure the 30 s
+was guarding against, reached by a different argument. The default is back to
+30000 and a shorter value is an experiment, not a setting.
 
-    1793825601.152  attach rc=1 generation=0   (five tries while no stream exists)
-    1793825606.748  first complete Screen VIDEO_FRAME accepted as AU
-    1793825606.809  attach rc=0 generation=3
+The real fault was next to it: **`retry` is static and was never reset.** It kept
+its value across sessions, so where it happened to stand relative to the period
+decided how long the first attach waited -- anywhere from nothing to a full 30 s.
+The same build and the same interval produced a 30.7 s silence once and 61 ms
+another time. That is why the delay looked intermittent and why a reconnect
+sometimes "fixed" it.
 
-**61 ms** from the first frame to the consumer attaching, against 30.7 s. Two
-further attaches followed at 614.7 and 632.1 -- 17 s apart, so not this retry
-loop but the other call site, and the sink kept pushing at 30 fps with
-`errors=0` throughout. The failure the 30 s was guarding against -- the push rate
-stuck at 0/s -- did not appear.
+Fixed by resetting the counter when a session starts wanting data, so the first
+attempt of every session is immediate and the backoff applies only to retries,
+where it was meant to. The interval itself stays tunable from
+`mibr-alt111-attach-retry-ms` (`tools/set-watchdog.sh attach`), re-read once a
+second while unattached.
+
+A shorter interval would need attach to leave priming alone while priming is
+running. That is not implemented, and it is the only thing that would make a fast
+retry safe.
 
 ## The second view area is inert: the two states cannot both be centred
 

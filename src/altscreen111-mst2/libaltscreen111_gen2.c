@@ -342,16 +342,23 @@ static const char *g2_d2_persist_marker = MIBR_PERSIST_DIR "mibr-alt111-keyframe
 
 #define G2_D2_EVENT_DELAY_MS 250u
 #define G2_D2_MIN_GAP_MS 1000u
-#define G2_D2_WATCHDOG_MS 1000u
 #define G2_D2_SOURCE_TURNS 0x01u
 #define G2_D2_SOURCE_SUGGEST_UI 0x02u
+
+/* The recovery watchdog waits for frames to stop, not for keyframes to stop. Type-111
+ * sends one IDR when the stream starts and then effectively none -- a measured 718 access
+ * units arrived against a single IDR -- so a watchdog on keyframe staleness is true from
+ * one second after the start onwards and forces an IDR every second for the whole drive.
+ * Access units arrive at the source rate, so their absence is a real fault. */
+static unsigned g2_d2_watchdog_ms = 1000u;
+static const char *g2_d2_watchdog_ms_path = MIBR_PERSIST_DIR "mibr-alt111-d2-watchdog-ms";
 
 static unsigned g2_d2_was_enabled;
 static unsigned g2_d2_pending_sources;
 static uint64_t g2_d2_pending_due_ms;
 static uint64_t g2_d2_last_request_ms;
-static uint64_t g2_d2_last_seen_idrs;
-static uint64_t g2_d2_last_idr_ms;
+static uint64_t g2_d2_last_seen_aus;
+static uint64_t g2_d2_last_au_ms;
 static uint64_t g2_d2_event_triggers;
 static uint64_t g2_d2_watchdog_triggers;
 static uint64_t g2_d2_coalesced;
@@ -2477,7 +2484,7 @@ static void gen2_publish_status(void)
     unsigned d2_enabled, d2_pending_sources;
     unsigned nav_query_enabled;
     char nav_url[384];
-    uint64_t d2_pending_due_ms, d2_last_request_ms, d2_last_idr_ms;
+    uint64_t d2_pending_due_ms, d2_last_request_ms, d2_last_au_ms;
     uint64_t d2_event_triggers, d2_watchdog_triggers, d2_coalesced;
     pthread_mutex_lock(&g2_core_lock);
     cs = g2_control;
@@ -2494,7 +2501,7 @@ static void gen2_publish_status(void)
     d2_pending_sources = g2_d2_pending_sources;
     d2_pending_due_ms = g2_d2_pending_due_ms;
     d2_last_request_ms = g2_d2_last_request_ms;
-    d2_last_idr_ms = g2_d2_last_idr_ms;
+    d2_last_au_ms = g2_d2_last_au_ms;
     d2_event_triggers = g2_d2_event_triggers;
     d2_watchdog_triggers = g2_d2_watchdog_triggers;
     d2_coalesced = g2_d2_coalesced;
@@ -2515,7 +2522,7 @@ static void gen2_publish_status(void)
         "resync_last_request_ms=%llu\nresync_next_request_ms=%llu\nresync_completed_ms=%llu\n"
         "resync_retry_ms=%u\n"
         "d2_enabled=%u\nd2_pending_sources=%u\nd2_pending_due_ms=%llu\n"
-        "d2_last_request_ms=%llu\nd2_last_idr_ms=%llu\n"
+        "d2_last_request_ms=%llu\nd2_last_au_ms=%llu\n"
         "d2_event_triggers=%llu\nd2_watchdog_triggers=%llu\nd2_coalesced=%llu\n"
         "mode_valid=%u\nmode_sequence=%llu\nmode_screen=%d\nmode_main_audio=%d\n"
         "mode_speech=%d\nmode_speech_detail=%d\nmode_phone=%d\nmode_turns=%d\n",
@@ -2536,7 +2543,7 @@ static void gen2_publish_status(void)
         (unsigned long long)rs.last_request_ms,(unsigned long long)rs.next_request_ms,
         (unsigned long long)rs.completed_ms,rs.retry_ms,
         d2_enabled,d2_pending_sources,(unsigned long long)d2_pending_due_ms,
-        (unsigned long long)d2_last_request_ms,(unsigned long long)d2_last_idr_ms,
+        (unsigned long long)d2_last_request_ms,(unsigned long long)d2_last_au_ms,
         (unsigned long long)d2_event_triggers,(unsigned long long)d2_watchdog_triggers,
         (unsigned long long)d2_coalesced,
         mode_valid,(unsigned long long)mode_sequence,
@@ -2740,14 +2747,14 @@ static void gen2_resync_poll(void)
     if(d2_enabled) {
         if(!g2_d2_was_enabled) {
             g2_d2_was_enabled = 1;
-            g2_d2_last_seen_idrs = snap.source_idrs;
-            g2_d2_last_idr_ms = now;
+            g2_d2_last_seen_aus = snap.source_aus;
+            g2_d2_last_au_ms = now;
             g2_d2_pending_sources = 0;
             g2_d2_pending_due_ms = 0;
             changed = 1;
-        } else if(snap.source_idrs != g2_d2_last_seen_idrs) {
-            g2_d2_last_seen_idrs = snap.source_idrs;
-            g2_d2_last_idr_ms = now;
+        } else if(snap.source_aus != g2_d2_last_seen_aus) {
+            g2_d2_last_seen_aus = snap.source_aus;
+            g2_d2_last_au_ms = now;
             changed = 1;
         }
     } else if(g2_d2_was_enabled) {
@@ -2771,8 +2778,8 @@ static void gen2_resync_poll(void)
                 g2_d2_pending_sources = 0;
                 g2_d2_pending_due_ms = 0;
             }
-        } else if(!g2_d2_pending_sources && g2_d2_last_idr_ms &&
-                  now >= g2_d2_last_idr_ms + G2_D2_WATCHDOG_MS &&
+        } else if(!g2_d2_pending_sources && g2_d2_last_au_ms &&
+                  now >= g2_d2_last_au_ms + g2_d2_watchdog_ms &&
                   (!g2_d2_last_request_ms ||
                    now >= g2_d2_last_request_ms + G2_D2_MIN_GAP_MS)) {
             auto_reason = ALT111_RESYNC_REASON_WATCHDOG;
@@ -2837,7 +2844,7 @@ static void gen2_resync_poll(void)
         logf_u2("GEN2 D2 ARM epoch=%llu reason=%u sources=0x%x idr_at_arm=%llu source_idrs=%llu delay_ms=%u watchdog_ms=%u",
                 (unsigned long long)epoch,auto_reason,auto_sources,
                 (unsigned long long)idr_at_arm,(unsigned long long)source_idrs,
-                G2_D2_EVENT_DELAY_MS,G2_D2_WATCHDOG_MS);
+                G2_D2_EVENT_DELAY_MS,g2_d2_watchdog_ms);
     }else if(auto_reason!=ALT111_RESYNC_REASON_NONE && auto_arm_rc!=ALT111_WAIT){
         logf_u2("GEN2 D2 ARM rejected rc=%d reason=%u sources=0x%x projection=%u config=%u primed=%u",
                 auto_arm_rc,auto_reason,auto_sources,
@@ -3649,6 +3656,14 @@ static void altscreen111_init(void)
             if(t>0) g_turns_active=t;
         }
     }
+    g2_d2_watchdog_ms=(unsigned)env_i("ALTSCREEN111_D2_WATCHDOG_MS",1000);
+    {
+        char v[32];
+        if(read_trimmed_value(g2_d2_watchdog_ms_path,v,sizeof(v))==0){
+            int t=atoi(v);
+            if(t>=100 && t<=600000) g2_d2_watchdog_ms=(unsigned)t;
+        }
+    }
     if(alt111_profile_validate(&g2_profile)!=ALT111_OK){
         g_enabled=0;
         logf_u2("gen2 runtime profile validation failed; disabled fail-closed");
@@ -3728,6 +3743,6 @@ static void altscreen111_init(void)
     logf_u2("GEN2 Candidate-D manual=%s D2_keyframes=%s eventDelayMs=%u watchdogMs=%u minGapMs=%u sessionMarker=%s persistentMarker=%s",
             access(g2_resync_enable_marker,F_OK)==0 ? "enabled" : "disabled",
             gen2_d2_enabled() ? "enabled" : "disabled",
-            G2_D2_EVENT_DELAY_MS,G2_D2_WATCHDOG_MS,G2_D2_MIN_GAP_MS,
+            G2_D2_EVENT_DELAY_MS,g2_d2_watchdog_ms,G2_D2_MIN_GAP_MS,
             g2_d2_enable_marker,g2_d2_persist_marker);
 }

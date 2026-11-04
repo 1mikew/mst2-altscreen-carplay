@@ -198,10 +198,12 @@ Removing the manoeuvre card needs the `map` surface. Nothing else does it.
 
 ## The splash, and why it is a keyframe
 
-The decoder emits nothing until it is given a keyframe, and Type-111 sends one only about
-every 29 s. Two things follow from that single fact: the cockpit stays blank for 10–30 s
-after connecting, and when the phone goes away the last frame it sent stays on the cluster
-for good.
+The decoder emits nothing until it is given a keyframe, and Type-111 does not send them
+often -- see "The keyframe merry-go-round" below, where a measured 718 access units arrived
+against a single IDR. Two things were blamed on that: the cockpit staying blank for 20-30 s
+after connecting, and the last frame staying on the cluster for good once the phone goes
+away. The second is real. The first turned out to be something else entirely, and the
+splash cannot cover it -- the same section has the measurement.
 
 Both are the same problem, so both get the same answer — a keyframe of our own:
 
@@ -456,3 +458,95 @@ connection only comes up at about the time the first natural IDR arrives -- Type
 one roughly every 29 s -- then both observations are one fact, and the keyframe we request
 while waiting is being asked for before the control path can carry it. The log now says
 when the splash is held back, which settles it.
+
+
+## The keyframe merry-go-round
+
+The log from the 3 Nov session, 3251 lines over five minutes, settles three things that
+were guesswork until now. All of it is one connected session with the phone sitting still.
+
+### D2 forces a keyframe every second, for the whole drive
+
+```
+GEN2 D2 ARM epoch=228 reason=4 sources=0x0 idr_at_arm=229 source_idrs=229 watchdog_ms=1000
+GEN2 RESYNC REQUEST epoch=228 ... source_idrs=229
+gen2 UI command dispatched type=4 request=232 awaiting completion
+gen2 UI completion type=4 request=232 status=0 core_rc=0
+GEN2 RESYNC COMPLETE epoch=228 completions=228 idr_at_arm=229 source_idrs=230
+GEN2 D2 ARM epoch=229 ...                                   <- 1.1 s later, again
+```
+
+241 epochs in five minutes, one about every 1.1 s, unbroken. The watchdog's rule was
+
+```c
+now >= g2_d2_last_idr_ms + G2_D2_WATCHDOG_MS   /* 1000 ms since the last keyframe */
+```
+
+and the condition it waits for is the *normal* state of this stream. At 1793721303 the
+counters read `source_aus=107 source_idrs=1`; twenty seconds later, `source_aus=718
+source_idrs=1`. Six hundred frames, no second keyframe. So "no keyframe for one second" is
+true from one second after the stream starts and stays true forever, and the watchdog built
+to recover from a fault became a metronome: one forced IDR per second, every second, for as
+long as the phone is connected.
+
+That is expensive in exactly the way the car showed. An IDR of a moving 1010x376 map is
+worth many ordinary frames, and the faster the car goes the more of the picture changes, so
+the forced keyframes grow at precisely the moment there is least headroom. It matches the
+report that the dropouts come at speed, outside town.
+
+The fix is to watch the right counter. Frames arrive at the source rate, so their absence
+is a genuine fault; keyframes arrive almost never, so their absence means nothing. The
+watchdog now triggers on `source_aus` going stale, and the interval is tunable from
+`mibr-alt111-d2-watchdog-ms` so it can be corrected without a build.
+
+### forceKeyFrame works, and it is fast
+
+Every one of those 241 requests was honoured: `status=0`, and `source_idrs` one higher by
+the time the resync completed, about 140 ms after the request. That is the useful half of
+the finding. Recovery does not have to be slow or scheduled -- one request fixes a stalled
+picture in roughly a seventh of a second, on demand. The merry-go-round was never buying
+safety that we cannot have cheaply.
+
+### The 20-30 s to first picture is not a keyframe wait at all
+
+The timeline of the same session:
+
+| time | event |
+|---|---|
+| 289.5 | `startSession` |
+| 298.9 | stream 111 SETUP accepted, receiver ready on 6031 |
+| 299.7 | valid video config; frames start arriving |
+| 303.9 | `source_aus=107 source_idrs=1` -- the stream is running at ~30 fps |
+| 324.2 | `turns=1` -- the route is started on the phone |
+| 324.3 | the phone sends `suggestUI` with the cluster URLs |
+| 327.6 | `gen2 renderer consumer attach rc=0`, `consumer keyframe intent rc=0` |
+| 327.7 | forced IDR arrives, `avcC built from the stream`, picture on the cluster |
+
+Frames and the first keyframe were there within a second of the stream being set up, 28 s
+before the picture appeared. Nothing was waiting for an IDR. What we wait for is the
+phone's `suggestUI`, and the phone sent it when the route was started -- our consumer
+attaches only then, and the picture follows 300 ms later.
+
+So the startup delay is the time between connecting the phone and the navigation app having
+something to offer the cluster. `showUI` of our own would not need to wait for the offer,
+and there is a marker to try it by hand, no build required:
+
+```bash
+tools/unit.py "touch /tmp/mibr-alt111-show-only"
+```
+
+`g_auto_show` is 0 in this build with no way to turn it on from a file, deliberately --
+upstream could not prove startup `showUI` against the reference. The marker is the way to
+find out whether this unit minds.
+
+### Which also explains the splash
+
+The splash is driven from the frame-handling path, and that path does not run until the
+consumer attaches. Until then there are no frames to be the "wrong" kind, so nothing ever
+asks for a splash. It could not have covered the gap it was written for -- not because the
+gate on DisplayManager was shut, but because the code that would open it never ran. The
+sink log for the whole session begins at the moment the picture starts, with no splash line
+of either kind, which is the proof.
+
+Covering that gap means driving the splash from the session lifecycle instead. Worth doing
+only if `showUI` turns out not to shorten the wait.

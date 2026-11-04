@@ -14,18 +14,18 @@ on one car; everything else is not done.
 | ✅ | Two independent displays | Both contexts `playing` at once; radio untouched |
 | ✅ | Decoder init from the live stream | SPS/PPS collected at runtime, `avcC` built on the fly |
 | ✅ | Provider switching | Apple Maps, Waze, Google Maps |
-| ✅ | Keyframe policy | Upstream D2 enabled |
+| 🟡 | Keyframe policy | Upstream D2 enabled, and its watchdog was a metronome: the rule "no keyframe for 1 s" is permanently true on this stream (718 frames against 1 IDR), so it forced an IDR every second for the whole drive. Now watches frames going stale instead, tunable from `mibr-alt111-d2-watchdog-ms`. Built, not yet driven |
 | ✅ | Persistence | Survives reboot, comes up on its own |
 | ✅ | Kill switch + stock restore | Session-local and permanent |
 | ✅ | Runtime reconfiguration | Geometry without rebooting the unit |
 | ✅ | **"Navigation on phone" overlay removed** | One instruction in `CarPlayModeHandling`; route guidance is visible. [docs/HMI-OVERLAY.md](docs/HMI-OVERLAY.md) |
 | 🟡 | Auto cleanup on disconnect | Three behaviours selectable: `keep`, `splash`, `release`. Driven from the session teardown hook — frame starvation was the wrong signal, and at 5 s it read an app switch on the radio as a disconnect. The idle timer is the fallback only, 30 s. Whether the built-in map redraws once released is still unmeasured. `tools/set-on-disconnect.sh` |
-| 🟡 | **Splash frame of our own** | Driven twice at the right size, showed nothing either time. It is gated on DisplayManager capturing, and the 20–30 s wait for the first picture suggests that gate opens about when the first natural IDR arrives — so the gap it was written for may not exist. The skip is logged; read the log before changing anything. Off unless the file is present |
+| 🟡 | **Splash frame of our own** | Driven twice at the right size, showed nothing either time, and the log says why: it is driven from the frame-handling path, which does not run until the consumer attaches — so nothing asks for a splash during the gap it was written for. Covering that gap needs it driven from the session lifecycle, which is only worth doing if `showUI` does not shorten the wait |
 | 🔬 | Mid-drive dropouts | **Not fixed.** The cluster falls back to the stock map for 1–5 s, more often at speed outside town, then recovers. The one drive that reported none was the outlier, not the new baseline. A dropout to the *stock* map means our window was removed, which only three code paths do — and all three need longer than 5 s to fire, so a fourth cause outside this library is in play. Each path logs a distinct line; `tools/set-watchdog.sh stall 600` rules our own teardown in or out without a rebuild. [docs/FINDINGS.md](docs/FINDINGS.md) |
-| 🔬 | Startup delay | 20–30 s to first picture, unchanged across builds. We do ask for a keyframe while waiting, every 10 s, so either the request is not reaching the phone before the natural IDR or the phone ignores it for stream 111. The same gate holds the splash back, which makes the two one measurement |
+| 🔬 | Startup delay | 20–30 s to first picture — **not a keyframe wait.** Frames and the first IDR arrive within a second of the stream being set up; what we wait for is the phone's `suggestUI`, which it sends when the route is started. Our consumer attaches then and the picture follows in 300 ms. Next: try `showUI` of our own, `touch /tmp/mibr-alt111-show-only` |
 | ⬜ | Extended road testing | Longer drives, connect/disconnect cycles, cold starts |
 | 🟡 | SafeArea / ViewArea *(fork)* | Honoured by the app and tunable from a file. The guiding rectangle `0 28 700 320` centres the map. The second view area for the idle state is declared and the guidance change is noticed, but the switch never fired: the threshold is two turns and a running route reports one. `mibr-carplay111-turns-active` overrides it, and whether the phone then acts on `updateViewArea` is the untested half |
-| ⬜ | D2 tuning *(fork)* | Event-scoped recovery instead of the 1 s watchdog |
+| 🟡 | D2 tuning *(fork)* | The 1 s watchdog is off the keyframe counter and onto the frame counter — see docs/FINDINGS.md. `forceKeyFrame` is honoured in ~140 ms every time, so recovery can stay on demand instead of scheduled |
 | 🟡 | Steering-wheel zoom | **Both halves known, including the values.** In: BAP NavSD `MapScale`, decoded, step vs continuous. Out: `changeMapZoomLevel` with `uuid` and `zoomDirection` (0 in, 1 out), paced one step at a time, no acknowledgement. Needs writing. [docs/CLUSTER-ZOOM.md](docs/CLUSTER-ZOOM.md) |
 | ⛔ | Native navigation arrows / RGI | The BAP NavSD sink exists (`ManeuverDescriptor`, `LaneGuidance`, `TurnToInfo`), but nothing found in the image feeds it from CarPlay — `ExboxGuidanceListener` carries a guidance *state*, not manoeuvre data. No turn-by-turn path to the head unit. Not planned |
 | 🟡 | **Raise the frame rate** | The cluster sends a *mode*, not a rate: `ChangeDataRateSequence` maps mode 2 to a hard-coded `setDataFrameRate(10)`. Tooling ready — `make-fps-patch.py` flips the byte, `set-cluster-fps.sh` puts it in the override jar and verifies it. Whether the cluster accepts more is still unanswered; try it parked |
@@ -56,18 +56,20 @@ The overlay is gone, so the picture can finally be judged on its own.
    every state used the idle area. `turns-active` at 1 is the next drive. A single
    rectangle may still serve both; see docs/FINDINGS.md. Manoeuvre card deliberately
    left on the radio display
-2. 🔬 The dropouts and the startup delay — read the log from the drive before changing
-   anything, then the `stall 600` experiment to rule our own teardown in or out
-3. 🟡 Raise the cluster frame rate past the hard-coded 10 — tooling ready, needs a car
-3. ⬜ Auto cleanup when the phone disconnects
-4. ⬜ Extended road testing *(gate for everything below)*
-5. ⬜ D2 tuning *(fork)*
-6. ⬜ Steering-wheel control *(fork)*
-7. ⬜ Native navigation arrows *(fork)*
-8. ⬜ **If the cluster refuses a higher rate**, the remaining angles are the advertised
+2. 🟡 Drive the D2 fix: the forced keyframe every second is gone, which is the best
+   candidate for dropouts that worsen with speed. If they survive it, `set-watchdog.sh
+   stall 600` rules our own teardown in or out
+3. 🔬 `touch /tmp/mibr-alt111-show-only` against the 20–30 s startup, with the phone
+   connected and no route started — the one measurement that decides the splash too
+4. 🟡 Raise the cluster frame rate past the hard-coded 10 — tooling ready, needs a car
+5. ⬜ Auto cleanup when the phone disconnects
+6. ⬜ Extended road testing *(gate for everything below)*
+7. ⬜ Steering-wheel control *(fork)*
+8. ⬜ Native navigation arrows *(fork)*
+9. ⬜ **If the cluster refuses a higher rate**, the remaining angles are the advertised
    `maxFPS` (the hook already has a runtime override) and upstream's Continental FPK
    research
-9. ⬜ **Broader firmware coverage.** Blocked on access, not on design: most of the work is
+10. ⬜ **Broader firmware coverage.** Blocked on access, not on design: most of the work is
    firmware-independent. Needs people with other units
 
 ## Help wanted

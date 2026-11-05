@@ -370,6 +370,9 @@ static const char *g2_d2_watchdog_ms_path = MIBR_PERSIST_DIR "mibr-alt111-d2-wat
  * without a build -- tools/set-watchdog.sh attach. */
 static unsigned g2_attach_retry_ms = 30000u;
 static const char *g2_attach_retry_ms_path = MIBR_PERSIST_DIR "mibr-alt111-attach-retry-ms";
+/* Paces the attach retries. Zeroed when the first frame of a session is accepted, which
+ * is the only moment worth attaching at -- see the loop in gen2_output_worker. */
+static unsigned g2_attach_retries;
 
 static unsigned g2_d2_was_enabled;
 static unsigned g2_d2_pending_sources;
@@ -1328,15 +1331,19 @@ static void *gen2_output_worker(void *arg)
              * interval. A reset makes the first attempt of every session immediate and
              * leaves the backoff for the retries, where it belongs. */
             {
-                static unsigned retry;
                 static int was_wanting;
                 int wanting = vc111_wants_data() ? 1 : 0;
-                if (wanting && !was_wanting) retry = 0;   /* new session: try at once */
+                /* The sink wants data from the moment it starts, long before the phone's
+                 * stream exists, and every pointless attempt in that gap advanced the
+                 * counter -- which is how a reset on this edge alone still left the first
+                 * real attach at a random point in the period. g2_attach_retries is
+                 * therefore also zeroed when the first frame arrives. */
+                if (wanting && !was_wanting) g2_attach_retries = 0;
                 was_wanting = wanting;
                 if (!attached && wanting) {
                     unsigned period = g2_attach_retry_ms / 5u;   /* this loop sleeps 5 ms */
                     if (period < 1u) period = 1u;
-                    if ((retry++ % period) == 0u) gen2_consumer_attach();
+                    if ((g2_attach_retries++ % period) == 0u) gen2_consumer_attach();
                 }
             }
             /* about once a second: clean the window off the cockpit if frames stopped,
@@ -1749,6 +1756,10 @@ static void *alt_receiver_thread(void *arg)
                             if (!g_streaming) {
                                 g_streaming = 1;
                                 publish_state("streaming");
+                                /* Now there is something to attach to, so the next pass
+                                 * of the output worker attaches instead of waiting out
+                                 * the rest of the retry period. */
+                                g2_attach_retries = 0;
                                 logf_u2("gen2: first complete Screen VIDEO_FRAME accepted as AU");
                             }
                             /* Source activity only creates the initial arm

@@ -29,6 +29,7 @@
 #include <time.h>
 #include <errno.h>
 #include <stdint.h>
+#include <sys/stat.h>
 #include <sys/neutrino.h>
 #include <sys/dispatch.h>
 
@@ -106,6 +107,12 @@ static int v_off(void)
     return access(V_OFF, 0) == 0 || access(V_OFF_P, 0) == 0;
 }
 #define V_LOG   "/tmp/cpvc_111.log"
+/* Significant events also go here, under /tsd/var, because /tmp is wiped by the reboot
+ * that every ignition cycle performs -- so a drive's log was gone before anyone could
+ * read it, and the mid-drive dropouts only happen while driving. Rotated once at the cap
+ * so it cannot fill the partition. */
+#define V_EVENTS     V_DIR "events.log"
+#define V_EVENTS_CAP 262144L
 #define V_DEV   "mdev111"
 #define V_IN    "mdevpush:/dev/name/local/" V_DEV \
                 "?fourcc=AVC1&video.frame_rate=30&video.depth=16" \
@@ -140,14 +147,53 @@ static size_t  v_sps_n, v_pps_n;
 static mmr_connection_t *v_conn;
 static mmr_context_t *v_ctx;
 
+/* Append one ready-made line. cap > 0 rotates the file once when it grows past cap. */
+static void v_append(const char *path, const char *line, long cap)
+{
+    FILE *f;
+    if (cap > 0) {
+        struct stat st;
+        if (stat(path, &st) == 0 && (long)st.st_size > cap) {
+            char prev[256];
+            snprintf(prev, sizeof(prev), "%s.1", path);
+            (void)rename(path, prev);
+        }
+    }
+    f = fopen(path, "a");
+    if (!f) return;
+    fputs(line, f);
+    fclose(f);
+}
+
+static void v_vformat(char *buf, size_t n, const char *fmt, va_list ap)
+{
+    int k = snprintf(buf, n, "%ld ", (long)time(NULL));
+    if (k < 0 || (size_t)k >= n) { buf[0] = '\0'; return; }
+    k += vsnprintf(buf + k, n - (size_t)k, fmt, ap);
+    if (k < 0) { buf[0] = '\0'; return; }
+    if ((size_t)k >= n - 2) k = (int)n - 2;
+    buf[k++] = '\n';
+    buf[k] = '\0';
+}
+
 static void v_log(const char *fmt, ...)
 {
-    FILE *f = fopen(V_LOG, "a");
+    char line[512];
     va_list ap;
-    if (!f) return;
-    fprintf(f, "%ld ", (long)time(NULL));
-    va_start(ap, fmt); vfprintf(f, fmt, ap); va_end(ap);
-    fputc('\n', f); fclose(f);
+    va_start(ap, fmt); v_vformat(line, sizeof(line), fmt, ap); va_end(ap);
+    if (line[0]) v_append(V_LOG, line, 0);
+}
+
+/* Use for anything worth having after the car is switched off: every teardown, every
+ * watchdog decision, the session coming and going, and the minute heartbeat. */
+static void v_event(const char *fmt, ...)
+{
+    char line[512];
+    va_list ap;
+    va_start(ap, fmt); v_vformat(line, sizeof(line), fmt, ap); va_end(ap);
+    if (!line[0]) return;
+    v_append(V_LOG, line, 0);
+    v_append(V_EVENTS, line, V_EVENTS_CAP);
 }
 
 static uint64_t v_now_us(void)
@@ -236,7 +282,7 @@ static void v_prime_from_avcc(const uint8_t *c, size_t n)
         if (p + l > n) return;
         v_push_nal(c + p, l, v_now_us()); p += l;
     }
-    v_log("priming z avcC hotovo (%u B)", (unsigned)n);
+    v_log("priming from avcC done (%u B)", (unsigned)n);
 }
 
 static void v_teardown(void)
@@ -346,7 +392,7 @@ static int v_setup(const char *out_url, const uint8_t *cfg, size_t cfg_n)
           }
           fclose(pf);
       } }
-    v_log("RUNNING: out=%s coid=%d hdr w1=%x w2=%x w3=%x", out_url, v_coid, v_w1, v_w2, v_w3);
+    v_event("RUNNING: out=%s coid=%d hdr w1=%x w2=%x w3=%x", out_url, v_coid, v_w1, v_w2, v_w3);
     return 0;
 }
 
@@ -525,6 +571,20 @@ static void v_watchdog(void)
 
     if (!c) return;                                   /* unreadable -> ignore */
 
+    /* One line a minute to the persistent log. Without it a dropout reported from the
+     * road cannot be placed against anything: this gives composition progress, whether
+     * DisplayManager is capturing, and how much we have pushed, all on one timeline. */
+    {
+        static time_t beat_at;
+        static unsigned long beat_counter, beat_sent;
+        if (now - beat_at >= 60) {
+            v_event("heartbeat capturing=%d counter=%lu (+%lu) sent=%ld (+%ld) fail=%ld",
+                    capturing, c, c - beat_counter,
+                    v_sent, v_sent - (long)beat_sent, v_fail);
+            beat_at = now; beat_counter = c; beat_sent = (unsigned long)v_sent;
+        }
+    }
+
     /* A different failure than stalled composition: composition runs, but DisplayManager
      * is not capturing at all (capture buffer = none). That happens when the cluster has
      * no FPK video connection -- the log shows "fpkUpdateTargetState(streaming): 2 -> 2"
@@ -540,7 +600,7 @@ static void v_watchdog(void)
         if (!nocap_since) nocap_since = now;
         if (now - nocap_since >= v_nocap_s()) {
             nocap_since = 0;
-            v_log("DisplayManager has not captured for %ds (counter=%lu) -> moving out of "
+            v_event("DisplayManager has not captured for %ds (counter=%lu) -> moving out of "
                   "the cockpit so the stock map redraws and the cluster can rebuild its "
                   "video connection", v_nocap_s(), c);
             v_teardown(); v_retries = 0;        /* we come back once capture resumes */
@@ -548,7 +608,7 @@ static void v_watchdog(void)
         return;
     }
     if (capturing == 1 && nocap_since) {
-        v_log("DisplayManager is capturing again; carrying on");
+        v_event("DisplayManager is capturing again; carrying on");
         nocap_since = 0;
     }
 
@@ -559,7 +619,7 @@ static void v_watchdog(void)
         if (now - stall_since >= v_stall_s()) {
             if (!nudged_at) {
                 nudged_at = now;
-                v_log("dpy-6 composition stalled for %ds (counter=%lu) while we are still "
+                v_event("dpy-6 composition stalled for %ds (counter=%lu) while we are still "
                       "pushing -> requesting a keyframe, leaving the window alone",
                       (int)(now - stall_since), c);
                 { FILE *k = fopen(V_KEYFRAME, "w"); if (k) fclose(k); }
@@ -568,7 +628,7 @@ static void v_watchdog(void)
                  * uncovers the stock map for as long as the rebuild takes, so it is the
                  * second choice and not the first. */
                 if (now - last_teardown < 10) return;  /* do not keep tearing it down */
-                v_log("still stalled %ds after the keyframe request -> tearing the context down",
+                v_event("still stalled %ds after the keyframe request -> tearing the context down",
                       (int)(now - nudged_at));
                 last_teardown = now;
                 stall_since = 0; nudged_at = 0;
@@ -651,7 +711,7 @@ static void v_idle_action(const char *why)
         /* Give the cockpit back. Whether the built-in map actually redraws is the
          * open question -- it stops while our window covers it, and DisplayManager
          * only captures when Screen reports a change. */
-        v_log("%s -> releasing the cockpit (on-disconnect=release)", why);
+        v_event("%s -> releasing the cockpit (on-disconnect=release)", why);
         v_teardown(); v_splash_on = 0;
         return;
     }

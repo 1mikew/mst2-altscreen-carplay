@@ -820,3 +820,53 @@ messages are not, and they are left in place as the record of how it was measure
 |---|---|---|
 | `0a371b3` "Two frame-rate ceilings" | composition caps us at 13.5 fps as well as DisplayManager's 10 | one ceiling. With our stream live, composition runs 35–37 fps; the 13.5 was the built-in map repainting with no phone connected. Corrected by `1052f56` |
 | `2113eb4` "The rest of the startup delay was a 30 s retry of our own" | the 30 s attach interval caused the delay, and 2000 ms fixes it | the interval was not the cause — an unreset counter was — and 2000 ms blacked out the cockpit. Corrected by `ffe8090` and `da8ffa4` |
+
+## The dropouts are not speed-dependent, and the log did not survive the drive
+
+Reported from the drive of 5 Nov: two dropouts to the built-in map, one while
+accelerating out of a village and one in a queue in town. Opposite ends of the
+speed range, so the dropouts are **not** speed-dependent.
+
+That retires the theory the D2 fix was built on. The forced keyframe every
+second was real and is gone, but the reason it looked like the cause -- an IDR of
+a moving map being expensive, and more expensive the faster the map moves -- does
+not survive a dropout in a stationary queue.
+
+Worse, the drive could not be read afterwards. Both logs live in `/tmp`, and
+`/tmp` is wiped by the reboot that every ignition cycle performs, so switching
+the car off destroys the evidence. The dropouts only happen while driving, and
+nobody is sitting at the car with a laptop while driving.
+
+Fixed by writing the significant lines to `/tsd/var/cpvc/events.log` as well,
+rotated once at 256 KB. It carries every teardown, every watchdog decision, the
+session coming and going, and a heartbeat once a minute with composition
+progress, whether DisplayManager is capturing, and how much we have pushed --
+enough to place a dropout reported from the road against something.
+`tools/get-events.sh` fetches it and prints the teardowns and the heartbeats.
+
+Each of the three paths that can remove our window names itself in that log, so
+the next drive settles whether the dropouts are ours:
+
+| line | path |
+|---|---|
+| `DisplayManager has not captured for Ns` | the cluster dropped its video connection, 60 s threshold |
+| `still stalled Ns after the keyframe request` | composition froze while we kept pushing, 2 x 4 s |
+| `no frames for N s -> releasing the cockpit` | the phone stopped sending, 30 s |
+
+All three need longer than the 1-5 s the driver sees, so if a dropout has none of
+those lines against it, the cause is outside this library and the heartbeat says
+whether composition or capture faltered at that moment.
+
+## The attach counter reset was still in the wrong place
+
+Yesterday's fix reset the retry counter when the sink starts wanting data. That
+is too early: the sink wants data from the moment it starts, long before the
+phone's stream exists, and every pointless attempt in that gap advances the
+counter -- five of them were visible in the log of 4 Nov before any stream. So
+when the stream finally arrived we were again at a random point in the 30 s
+period, which is exactly what the drive of 5 Nov reported: a long wait on the
+built-in map.
+
+The counter is now also zeroed where the first frame of a session is accepted,
+which is the only moment worth attaching at. The session-start reset is kept for
+the case where frames are already flowing when the sink comes up.

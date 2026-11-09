@@ -870,3 +870,43 @@ built-in map.
 The counter is now also zeroed where the first frame of a session is accepted,
 which is the only moment worth attaching at. The session-start reset is kept for
 the case where frames are already flowing when the sink comes up.
+
+## Detailed logging onto a USB stick, and a second-by-second telemetry line
+
+Two problems made the mid-drive dropouts undiagnosable, and the event log on
+`/tsd` only solved half of one. `/tmp` is wiped by the reboot behind every
+ignition cycle, and the link off the unit runs at about 3 kB/s -- six minutes for
+one session's verbose log, assuming the car is still switched on. The free USB
+port solves both: a stick survives the ignition and reads on a laptop in seconds.
+
+Written by a thread of its own, because the frame path must never wait on USB:
+
+* **`telemetry.log`, one line a second.** This is the point of the exercise. A
+  dropout the driver reports as one to five seconds is invisible in a log that
+  only speaks when something decides to act, and all three of our teardown paths
+  need longer than that to fire. Four numbers a second tell the modes apart:
+
+      <epoch> comp=<counter> dcomp=<delta> cap=<0|1|-1> sent=<AUs> dsent=<delta> fail=<n> state=<n>
+
+  | symptom in the telemetry | what it means |
+  |---|---|
+  | `dcomp` goes to 0 while `state=1` | `dpy-6` is not being recomposed |
+  | `cap` goes to 0 | DisplayManager stopped capturing: nothing reaches the cluster |
+  | `dsent` goes to 0 while `state=1` | we stopped feeding |
+  | `state` dips to 0 and back | our context was torn down and rebuilt — what a fallback to the built-in map looks like from inside |
+  | none of the above at the reported time | **not ours**, which moves the search to the cluster and the MOST link |
+
+* **Both verbose logs, appended every ten seconds** from where they were last
+  shipped, so nothing is copied twice and `/tmp` stays the fast buffer.
+
+Where a USB stick mounts on this unit is not documented anywhere we have, so the
+shipper scans `/media/*` and `/fs/*` for a volume it can write to, skipping
+`mp000` by name because that is the read-only map card. `logship-dir` pins one
+instead, `logship-off` switches the whole thing off, and `tools/set-logship.sh
+probe` lists what the unit can see. A stick pulled mid-drive is noticed on the
+next write and picked up again when it returns.
+
+`tools/read-telemetry.py` reads the result: it groups neighbouring suspicious
+seconds into the episodes a driver would actually notice, prints gaps where the
+unit was off or the stick was out, and takes `--at HH:MM:SS` to show a window
+around a time reported from the road.

@@ -30,6 +30,9 @@
 #include <errno.h>
 #include <stdint.h>
 #include <sys/stat.h>
+#include <fcntl.h>
+#include <dirent.h>
+#include <pthread.h>
 #include <sys/neutrino.h>
 #include <sys/dispatch.h>
 
@@ -113,6 +116,8 @@ static int v_off(void)
  * so it cannot fill the partition. */
 #define V_EVENTS     V_DIR "events.log"
 #define V_EVENTS_CAP 262144L
+/* The library's own log, shipped alongside ours. */
+#define V_LOG_LIB "/tmp/altscreen111.log"
 #define V_DEV   "mdev111"
 #define V_IN    "mdevpush:/dev/name/local/" V_DEV \
                 "?fourcc=AVC1&video.frame_rate=30&video.depth=16" \
@@ -540,6 +545,183 @@ static unsigned long v_dpy_counter(int *capturing)
     return v;
 }
 
+/* ---- detailed logging onto a USB stick ----------------------------------- */
+/*
+ * Both logs live in /tmp, which the reboot behind every ignition cycle wipes, so a
+ * drive's verbose log was destroyed before anyone could read it. Fetching it over FTP is
+ * no answer either: that link runs at about 3 kB/s, six minutes for one session. A stick
+ * in the free USB port fixes both -- it survives the ignition and it reads on a laptop in
+ * seconds.
+ *
+ * All of this runs on its own thread. The frame path must never wait on USB.
+ */
+#define V_SHIP_CFG  V_DIR "logship-dir"     /* one line: use exactly this directory */
+#define V_SHIP_OFF  V_DIR "logship-off"     /* presence switches the whole thing off */
+#define V_SHIP_SUB  "mst2-logs"
+#define V_SHIP_CAP  (64L * 1024L * 1024L)   /* rotate once past this, per file */
+
+static char v_ship_dir[256];
+
+static int v_ship_try(const char *base)
+{
+    char dir[256], probe[320];
+    int fd;
+    if (!base || !*base) return 0;
+    snprintf(dir, sizeof(dir), "%s/%s", base, V_SHIP_SUB);
+    (void)mkdir(dir, 0777);
+    snprintf(probe, sizeof(probe), "%s/.writable", dir);
+    fd = open(probe, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (fd < 0) return 0;
+    close(fd);
+    (void)unlink(probe);
+    snprintf(v_ship_dir, sizeof(v_ship_dir), "%s", dir);
+    return 1;
+}
+
+/* An explicit directory wins. Otherwise scan for a removable volume we can write to:
+ * where a USB stick lands on this unit is not documented anywhere we have, so a scan
+ * beats a guess. mp000 is the map card and is read-only, so it is skipped by name. */
+static int v_ship_locate(void)
+{
+    static const char *roots[] = { "/media", "/fs", NULL };
+    char line[256];
+    FILE *f;
+    int i;
+
+    v_ship_dir[0] = '\0';
+    if (access(V_SHIP_OFF, F_OK) == 0) return 0;
+
+    f = fopen(V_SHIP_CFG, "r");
+    if (f) {
+        if (fgets(line, sizeof(line), f)) {
+            char *e = line + strlen(line);
+            while (e > line && (e[-1] == '\n' || e[-1] == '\r' || e[-1] == ' ')) *--e = '\0';
+            fclose(f);
+            return v_ship_try(line);
+        }
+        fclose(f);
+    }
+
+    for (i = 0; roots[i]; i++) {
+        DIR *d = opendir(roots[i]);
+        struct dirent *de;
+        if (!d) continue;
+        while ((de = readdir(d)) != NULL) {
+            char base[256];
+            if (de->d_name[0] == '.') continue;
+            if (strcmp(de->d_name, "mp000") == 0) continue;   /* maps, read-only */
+            snprintf(base, sizeof(base), "%s/%s", roots[i], de->d_name);
+            if (v_ship_try(base)) { closedir(d); return 1; }
+        }
+        closedir(d);
+    }
+    return 0;
+}
+
+/* Rotate once past the cap so a stick left in the car cannot be filled. */
+static void v_ship_rotate(const char *path)
+{
+    struct stat st;
+    if (stat(path, &st) == 0 && (long)st.st_size > V_SHIP_CAP) {
+        char prev[352];
+        snprintf(prev, sizeof(prev), "%s.1", path);
+        (void)rename(path, prev);
+    }
+}
+
+/* Append whatever is new in src, remembering how far we got. Returns 0 when the
+ * destination could not be written, which is how a removed stick is noticed. */
+static int v_ship_tail(const char *src, const char *name, off_t *off)
+{
+    char dst[320];
+    char buf[8192];
+    struct stat st;
+    int in, out;
+    ssize_t n;
+
+    if (stat(src, &st) != 0) return 1;              /* nothing to ship yet */
+    if (st.st_size < *off) *off = 0;                /* truncated or replaced */
+    if (st.st_size == *off) return 1;
+
+    snprintf(dst, sizeof(dst), "%s/%s", v_ship_dir, name);
+    v_ship_rotate(dst);
+    out = open(dst, O_WRONLY | O_CREAT | O_APPEND, 0666);
+    if (out < 0) return 0;
+    in = open(src, O_RDONLY);
+    if (in < 0) { close(out); return 1; }
+    if (lseek(in, *off, SEEK_SET) == (off_t)-1) { close(in); close(out); return 1; }
+    while ((n = read(in, buf, sizeof(buf))) > 0) {
+        if (write(out, buf, (size_t)n) != n) { close(in); close(out); return 0; }
+        *off += n;
+    }
+    close(in);
+    close(out);
+    return 1;
+}
+
+/* One telemetry line a second, plus the two verbose logs every ten.
+ *
+ * The telemetry is the point of the exercise: a dropout the driver reports as "one to
+ * five seconds" is invisible in a log that only speaks when something decides to act.
+ * Four numbers a second tell the modes apart -- composition stopping, DisplayManager
+ * stopping its capture, us stopping pushing, and the context being rebuilt. */
+static void *v_ship_worker(void *arg)
+{
+    off_t off_lib = 0, off_sink = 0;
+    unsigned long last_comp = 0;
+    long last_sent = 0;
+    unsigned beat = 0;
+    (void)arg;
+
+    for (;;) {
+        char line[256], dst[320];
+        unsigned long comp;
+        int capturing = -1;
+        int fd, ok = 1;
+
+        if (!v_ship_dir[0]) {
+            if (!v_ship_locate()) { sleep(10); continue; }   /* no stick in yet */
+            off_lib = 0; off_sink = 0; beat = 0;
+            v_event("detailed logging to %s", v_ship_dir);
+        }
+
+        comp = v_dpy_counter(&capturing);
+        snprintf(line, sizeof(line),
+                 "%ld comp=%lu dcomp=%ld cap=%d sent=%ld dsent=%ld fail=%ld state=%d\n",
+                 (long)time(NULL), comp, (long)comp - (long)last_comp, capturing,
+                 v_sent, v_sent - last_sent, v_fail, v_state);
+        last_comp = comp;
+        last_sent = v_sent;
+
+        snprintf(dst, sizeof(dst), "%s/telemetry.log", v_ship_dir);
+        v_ship_rotate(dst);
+        fd = open(dst, O_WRONLY | O_CREAT | O_APPEND, 0666);
+        if (fd < 0) ok = 0;
+        else { (void)write(fd, line, strlen(line)); close(fd); }
+
+        if (ok && (beat++ % 10u) == 0u) {
+            if (!v_ship_tail(V_LOG_LIB, "altscreen111.log", &off_lib)) ok = 0;
+            if (ok && !v_ship_tail(V_LOG, "cpvc_111.log", &off_sink)) ok = 0;
+        }
+
+        if (!ok) v_ship_dir[0] = '\0';      /* stick pulled: start looking again */
+        sleep(1);
+    }
+    return NULL;
+}
+
+static void v_logship_kick(void)
+{
+    static pthread_t th;
+    static int started;
+    if (started) return;
+    started = 1;
+    if (pthread_create(&th, NULL, v_ship_worker, NULL) != 0) {
+        started = 0;
+        v_log("could not start the log shipper thread");
+    }
+}
+
 /* Read a wall-clock threshold from an optional file, session-local first.
  * Every threshold here used to be a count of watchdog checks, which silently changed
  * meaning the moment the check interval did. Seconds do not. */
@@ -736,7 +918,12 @@ void vc111_session_gone(void)
 void vc111_idle_tick(void)
 {
     char why[64];
-    int secs = v_idle_s();
+    int secs;
+    /* Called once a second from the gen2 output thread, so it is where the shipper gets
+     * started -- before the early returns, since detailed logging is wanted whether or
+     * not we are currently on the cockpit. */
+    v_logship_kick();
+    secs = v_idle_s();
     if (v_state != 1 || !v_last_feed) return;
     if ((long)(time(NULL) - v_last_feed) < (long)secs) return;
     snprintf(why, sizeof(why), "no frames for %d s", secs);
@@ -815,10 +1002,11 @@ void vc111_feed(const uint8_t *au, size_t n, unsigned nal_len_size,
         /* We MUST start on a keyframe: starting mid-GOP means the engine never sees the
          * parameter sets and fails with error 5 (verified). */
         if (!idr) {
-            /* The start waits on a keyframe and one arrives only about every 29 s, which
-             * is a noticeable wait. Ask for one instead: the gen2 marker consumes this
-             * file and issues forceKeyFrame. At most once every 10 s, so the phone is
-             * not flooded with requests. */
+            /* We must start on a keyframe, so ask for one rather than wait: the gen2
+             * marker consumes this file and issues forceKeyFrame, which is answered in
+             * about 140 ms. At most once every 10 s, so the phone is not flooded. (The
+             * comment here used to say a keyframe only arrives every 29 s or so. It does
+             * not -- see docs/FINDINGS.md.) */
             static time_t last_req;
             time_t now = time(NULL);
             if (now - last_req >= 10) {

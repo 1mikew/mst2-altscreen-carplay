@@ -50,17 +50,19 @@ on one car; everything else is not done.
 
 The overlay is gone, so the picture can finally be judged on its own.
 
-1. 🟡 Cluster layout — one rectangle centres one state, not both. `0 28 700 320`
-   centres the map while guiding, driven 26 Oct; `155 28 700 320` centres it when idle.
-   The rectangle is an offset against the phone's right bias, not a frame to centre
-   content inside. Two view areas are declared for the two states; the log says why the
-   switch never fired — the threshold is two turns and a running route reports one, so
-   every state used the idle area. `turns-active` at 1 is the next drive. A single
-   rectangle may still serve both; see docs/FINDINGS.md. Manoeuvre card deliberately
-   left on the radio display
-2. 🟡 Drive the D2 fix: the forced keyframe every second is gone, which is the best
-   candidate for dropouts that worsen with speed. If they survive it, `set-watchdog.sh
-   stall 600` rules our own teardown in or out
+1. ✅ Cluster layout — settled 4 Nov. One rectangle `0 28 700 320`, one view area,
+   guiding centred. Two rectangles are a dead end by measurement: the threshold really
+   was wrong (default 2, a running route reports 1) and with `turns 1` the switch fires
+   16 ms after the mode change, but the guiding rectangle is inert — moved across a
+   310 px span the guiding picture did not shift a pixel, while the *idle* rectangle
+   governs both states. So only one of the two states can be centred, and guiding is the
+   one that matters. Manoeuvre card deliberately left on the radio display
+2. 🔴 **Install the build of 5 Nov — everything below waits on it.** It carries the
+   persistent event log, and until it is on the car no drive can be read: both logs live
+   in `/tmp`, which the reboot behind every ignition cycle wipes, so switching the car off
+   destroys the evidence for a fault that only happens while driving. It also fixes the
+   first consumer attach. `tools/deploy.sh`, then `tools/get-events.sh clear` before a
+   drive and `tools/get-events.sh` after
 3. 🔬 Gate the sink on something better than `capture buffer`. Measured: the buffer
    stayed set while DisplayManager had disarmed its timer, so the sink believed it was
    being consumed and kept pushing frames into a cluster that was no longer fed. The

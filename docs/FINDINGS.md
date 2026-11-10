@@ -954,3 +954,49 @@ Still to check at the car, and not codeable blind: DisplayManager logs
 `update rate set to N` to the `dispmg` stdout log named in its `cpu.conf` block.
 If that log can be found and followed, a rate change at the moment of a dropout
 is direct evidence for the second mechanism.
+
+## The fourth teardown path, and the counter that made it fire for nothing
+
+Refined from the drive of 10 Nov: the dropouts do not come at every turn, but
+they have come several times entering a village -- where the map rezooms. That
+demotes the turns-edge keyframe, which would fire at every manoeuvre, and points
+at the phone redrawing the scene.
+
+Which led to the path none of our tables had, because the three we knew all need
+seconds to fire and the driver sees one to five:
+
+    if (++v_fail > 30) {
+        v_log("errors=%ld (ok=%ld) -> tearing down, retrying on the next IDR", ...);
+        v_teardown();
+
+Thirty-one refused pushes is about a second at 30 fps -- the only path fast
+enough to match. And **`v_fail` was never reset on a successful push.** It was
+cleared at setup and nowhere else, so it was not a burst counter at all but a
+lifetime count: refusals picked up one at a time across a drive accumulated until
+the thirty-first tore the context down, whenever that happened to fall. That
+matches the report exactly -- not at every turn, but several times over a drive,
+each village contributing a few.
+
+A second fault sat beside it. `v_retries` was not cleared on a successful setup
+either, so four rebuilds spread across a long drive would reach
+`SINK DISABLED (4 failures)` and the cockpit would stay gone for good.
+
+Both fixed, and the response made two-stage, which is what the composition
+watchdog in the same file already argues for -- the first stage is invisible to
+the driver and the second is not:
+
+* thirty-one refusals **in a row** now request a keyframe and keep the window;
+* a second burst within five seconds is treated as a real fault and tears down;
+* a successful push clears the run, a successful setup clears the retry count;
+* the lifetime figure is kept separately for the log and the telemetry, so
+  nothing is lost by the counter meaning what it says.
+
+The telemetry also carries `drop`/`ddrop` now, because the rezoom hypothesis
+predicts exactly that signature: a burst arrives, the queue cannot take it, and
+access units are thrown away. `tools/read-telemetry.py` reports dropped frames
+ahead of the keyframe and burst markers -- that we could not take the burst says
+more than that it arrived, and it is the half that is ours to fix.
+
+Four scenarios were run against the reader to check it names each one correctly:
+our own keyframe, an unprompted one from the phone, a rezoom overrunning the
+queue, and DisplayManager simply stopping its capture.

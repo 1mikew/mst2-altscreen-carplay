@@ -2534,12 +2534,13 @@ static CFMutableDictionaryRef gen2_command_dictionary(const struct alt111_comman
  * Takes the core lock for three reads: 64-bit counters tear on 32-bit ARM, and
  * microseconds of lock contention is cheaper than a nonsense delta in the log. */
 void alt111_source_counters(unsigned long long *aus, unsigned long long *idrs,
-                            unsigned long long *resyncs)
+                            unsigned long long *resyncs, unsigned long long *dropped)
 {
     pthread_mutex_lock(&g2_core_lock);
     if (aus)     *aus     = (unsigned long long)g2_video.source_aus;
     if (idrs)    *idrs    = (unsigned long long)g2_video.source_idrs;
     if (resyncs) *resyncs = (unsigned long long)g2_resync.requests;
+    if (dropped) *dropped = (unsigned long long)g2_video.dropped_aus;
     pthread_mutex_unlock(&g2_core_lock);
 }
 

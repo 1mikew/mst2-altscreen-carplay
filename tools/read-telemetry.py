@@ -65,6 +65,8 @@ def faults(r, prev_fail, burst):
         marks.append(f"we-asked-resync(+{r['drsy']})")
     if burst and r.get("daus", 0) > burst:
         marks.append(f"frame-burst({r['daus']})")
+    if r.get("ddrop", 0) > 0:
+        marks.append(f"frames-dropped(+{r['ddrop']})")
     return bad, marks
 
 
@@ -89,6 +91,17 @@ def verdict(reasons, marks):
         where = ("right after WE asked for a keyframe -- ours, not the phone's"
                  if "keyframe" in marks else
                  "right after we asked for a resync, so our side moved first")
+    # Dropped frames come first among the phone-side markers: that we could not take the
+    # burst says more than that it arrived, and it is the half we can do something about.
+    elif "frames-dropped" in marks:
+        extra = []
+        if "keyframe" in marks:
+            extra.append("a keyframe")
+        if "frame-burst" in marks:
+            extra.append("a burst of frames")
+        with_what = " and ".join(extra) if extra else "frames still arriving"
+        where = (f"while we were throwing frames away, with {with_what} -- the phone "
+                 "redrew the scene and our queue could not take it")
     elif "keyframe" in marks and "frame-burst" in marks:
         where = "with an unprompted keyframe and a burst of frames -- the phone redrew the scene"
     elif "keyframe" in marks:
@@ -165,7 +178,7 @@ def main(argv):
                   f"dcomp={r.get('dcomp',0):<5} cap={r.get('cap',-1):<3} "
                   f"sent={r.get('sent',0):<8} dsent={r.get('dsent',0):<5} "
                   f"state={r.get('state',0)} daus={r.get('daus',0):<4} "
-                  f"didrs={r.get('didrs',0)}{mark}")
+                  f"didrs={r.get('didrs',0)} ddrop={r.get('ddrop',0)}{mark}")
 
     print(f"\n{len(rows)} samples, {hhmmss(rows[0]['t'])} to {hhmmss(rows[-1]['t'])}")
     if gaps:

@@ -121,7 +121,7 @@ static int v_off(void)
 
 /* Defined in libaltscreen111_gen2.c; see the note there for why these three matter. */
 void alt111_source_counters(unsigned long long *aus, unsigned long long *idrs,
-                            unsigned long long *resyncs);
+                            unsigned long long *resyncs, unsigned long long *dropped);
 #define V_DEV   "mdev111"
 #define V_IN    "mdevpush:/dev/name/local/" V_DEV \
                 "?fourcc=AVC1&video.frame_rate=30&video.depth=16" \
@@ -131,7 +131,15 @@ void alt111_source_counters(unsigned long long *aus, unsigned long long *idrs,
 static int v_state = 0;      /* 0 = not set up, 1 = running, -1 = permanently disabled */
 static int v_coid = -1;
 static unsigned v_tick = 0;
-static long v_sent = 0, v_fail = 0;
+static long v_sent = 0;
+/* v_fail counts CONSECUTIVE refused pushes, because that is what the threshold below is
+ * meant to catch -- a burst the renderer cannot take. It used to never reset on success,
+ * so it was really a lifetime count: refusals picked up one at a time across a drive
+ * eventually crossed the threshold and tore the context down for no present fault, which
+ * is what a dropout to the built-in map looks like from the driver's seat. The lifetime
+ * figure is still wanted for the log and the telemetry, so it is kept separately. */
+static long v_fail = 0, v_fail_total = 0;
+static time_t v_fail_nudged;
 static int  v_retries = 0;
 /* Header fields SAL happens to set (observed: w1=0x1c, w2=1, w3=0x144a). The consumer
   * never reads them -- they are stack garbage in SAL's own messages -- but they stay
@@ -672,15 +680,15 @@ static int v_ship_tail(const char *src, const char *name, off_t *off)
 static void *v_ship_worker(void *arg)
 {
     off_t off_lib = 0, off_sink = 0;
-    unsigned long long last_aus = 0, last_idrs = 0, last_rsy = 0;
+    unsigned long long last_aus = 0, last_idrs = 0, last_rsy = 0, last_drop = 0;
     unsigned long last_comp = 0;
     long last_sent = 0;
     unsigned beat = 0;
     (void)arg;
 
     for (;;) {
-        char line[320], dst[320];
-        unsigned long long aus = 0, idrs = 0, rsy = 0;
+        char line[384], dst[320];
+        unsigned long long aus = 0, idrs = 0, rsy = 0, drop = 0;
         unsigned long comp;
         int capturing = -1;
         int fd, ok = 1;
@@ -692,18 +700,20 @@ static void *v_ship_worker(void *arg)
         }
 
         comp = v_dpy_counter(&capturing);
-        alt111_source_counters(&aus, &idrs, &rsy);
+        alt111_source_counters(&aus, &idrs, &rsy, &drop);
         snprintf(line, sizeof(line),
                  "%ld comp=%lu dcomp=%ld cap=%d sent=%ld dsent=%ld fail=%ld state=%d "
-                 "aus=%llu daus=%lld idrs=%llu didrs=%lld rsy=%llu drsy=%lld\n",
+                 "aus=%llu daus=%lld idrs=%llu didrs=%lld rsy=%llu drsy=%lld "
+                 "drop=%llu ddrop=%lld\n",
                  (long)time(NULL), comp, (long)comp - (long)last_comp, capturing,
-                 v_sent, v_sent - last_sent, v_fail, v_state,
+                 v_sent, v_sent - last_sent, v_fail_total, v_state,
                  aus,  (long long)(aus  - last_aus),
                  idrs, (long long)(idrs - last_idrs),
-                 rsy,  (long long)(rsy  - last_rsy));
+                 rsy,  (long long)(rsy  - last_rsy),
+                 drop, (long long)(drop - last_drop));
         last_comp = comp;
         last_sent = v_sent;
-        last_aus = aus; last_idrs = idrs; last_rsy = rsy;
+        last_aus = aus; last_idrs = idrs; last_rsy = rsy; last_drop = drop;
 
         snprintf(dst, sizeof(dst), "%s/telemetry.log", v_ship_dir);
         v_ship_rotate(dst);
@@ -774,7 +784,7 @@ static void v_watchdog(void)
         if (now - beat_at >= 60) {
             v_event("heartbeat capturing=%d counter=%lu (+%lu) sent=%ld (+%ld) fail=%ld",
                     capturing, c, c - beat_counter,
-                    v_sent, v_sent - (long)beat_sent, v_fail);
+                    v_sent, v_sent - (long)beat_sent, v_fail_total);
             beat_at = now; beat_counter = c; beat_sent = (unsigned long)v_sent;
         }
     }
@@ -1082,7 +1092,9 @@ void vc111_feed(const uint8_t *au, size_t n, unsigned nal_len_size,
         if (v_setup(out, avcc_cfg, cfg_len) < 0) { v_teardown(); 
             if (++v_retries > 3) { v_state = -1; v_log("SINK DISABLED (setup failed %d times)", v_retries); }
             return; } }
-        v_state = 1; v_fail = 0;
+        /* Both counters mean "in a row" from here on: without clearing v_retries a
+         * handful of rebuilds spread over a long drive would disable the sink for good. */
+        v_state = 1; v_fail = 0; v_retries = 0;
         strncpy(v_used, out, sizeof(v_used) - 1); v_used[sizeof(v_used) - 1] = 0;
     }
 
@@ -1096,19 +1108,41 @@ void vc111_feed(const uint8_t *au, size_t n, unsigned nal_len_size,
         while (j + 3 <= n && !(au[j] == 0 && au[j+1] == 0 && au[j+2] == 1)) j++;
         end = (j + 3 <= n) ? j : n;
         l = end - s;
-        while (l > 0 && au[s + l - 1] == 0) l--;    /* zero_byte pred dalsim start kodem */
+        while (l > 0 && au[s + l - 1] == 0) l--;    /* zero_byte before the next start code */
         if (l > 0) {
             if (v_push_nal(au + s, (uint32_t)l, pts) < 0) {
+                v_fail_total++;
                 if (++v_fail > 30) {
-                    v_log("errors=%ld (ok=%ld) -> tearing down, retrying on the next IDR",
-                          v_fail, v_sent);
-                    v_teardown();
-                    if (++v_retries > 3) { v_state = -1; v_log("SINK DISABLED (%d failures)", v_retries); }
-                    return;
+                    /* Thirty-one in a row is about a second at 30 fps. Recovery comes in
+                     * two stages for the same reason the composition watchdog does: the
+                     * first is invisible to the driver and the second is not. A burst the
+                     * renderer briefly cannot take -- which is what the phone rezooming a
+                     * map produces -- deserves a keyframe, not the stock map. */
+                    time_t now = time(NULL);
+                    v_fail = 0;
+                    if (now - v_fail_nudged >= 5) {
+                        FILE *k;
+                        v_fail_nudged = now;
+                        k = fopen(V_KEYFRAME, "w");
+                        if (k) fclose(k);
+                        v_event("31 pushes refused in a row (total=%ld ok=%ld) -> keyframe "
+                                "requested, window kept", v_fail_total, v_sent);
+                    } else {
+                        v_event("pushes refused again %ds later (total=%ld ok=%ld) -> tearing "
+                                "down, retrying on the next IDR",
+                                (int)(now - v_fail_nudged), v_fail_total, v_sent);
+                        v_teardown();
+                        if (++v_retries > 3) {
+                            v_state = -1;
+                            v_event("SINK DISABLED (%d setups failed in a row)", v_retries);
+                        }
+                        return;
+                    }
                 }
             } else {
+                v_fail = 0;
                 v_sent++;
-                if ((v_sent % 300) == 1) v_log("NALs sent=%ld errors=%ld", v_sent, v_fail);
+                if ((v_sent % 300) == 1) v_log("NALs sent=%ld errors=%ld", v_sent, v_fail_total);
             }
         }
         p = end;

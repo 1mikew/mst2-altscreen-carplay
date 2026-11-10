@@ -82,14 +82,19 @@ def verdict(reasons, marks):
         what = "our context was down"
     else:
         what = "nothing faulted"
-    if "keyframe" in marks and "frame-burst" in marks:
-        where = "with a keyframe and a burst of frames -- the phone redrew the scene"
+    # Order matters: a keyframe we asked for ourselves is not the phone redrawing the
+    # scene, and on a turns edge we do ask for one -- so our own request is checked first
+    # or every manoeuvre would be blamed on the phone.
+    if "we-asked-resync" in marks:
+        where = ("right after WE asked for a keyframe -- ours, not the phone's"
+                 if "keyframe" in marks else
+                 "right after we asked for a resync, so our side moved first")
+    elif "keyframe" in marks and "frame-burst" in marks:
+        where = "with an unprompted keyframe and a burst of frames -- the phone redrew the scene"
     elif "keyframe" in marks:
-        where = "with a keyframe -- the phone redrew the scene"
+        where = "with an unprompted keyframe -- the phone redrew the scene"
     elif "frame-burst" in marks:
-        where = "with a burst of frames"
-    elif "we-asked-resync" in marks:
-        where = "after we asked for a resync, so we noticed it first"
+        where = "with a burst of frames from the phone"
     else:
         where = "with the phone sending evenly, so the cause is on this side"
     return f"{what}, {where}"

@@ -934,11 +934,21 @@ DisplayManager reconfigures its capture timer, and that is exactly the behaviour
 measured on 4 Nov when the map source was switched: the old timer disarmed, a new
 one created. Nothing reaches the cluster while that happens.
 
+**We ask for the keyframe ourselves.** On every turns edge the library runs
+`gen2_d2_schedule(G2_D2_SOURCE_TURNS, "turns-edge")`, so a change in the number
+of reported turns forces an IDR. Slowing from 100 to 45 is typically the approach
+to a manoeuvre or a village, which is exactly when `turns` changes -- so the
+expensive keyframe may be ours, arriving at the worst possible moment. This is the
+one of the three that is wholly in our hands, and `drsy` in the telemetry shows it.
+
 The telemetry separates them, which is why `aus`, `idrs` and `rsy` were added to
 it. A dropout carrying a keyframe or a burst of frames came from the phone; one
 with the counters ticking along evenly did not, and the fault is on this side.
 `tools/read-telemetry.py` prints that as the verdict for each episode, so the
-reading does not depend on remembering which column means what.
+reading does not depend on remembering which column means what. Our own request is
+checked before the keyframe marker: a keyframe we asked for is not the phone
+redrawing the scene, and since we ask on every turns edge, the other order would
+blame the phone for every manoeuvre.
 
 Still to check at the car, and not codeable blind: DisplayManager logs
 `update rate set to N` to the `dispmg` stdout log named in its `cpu.conf` block.

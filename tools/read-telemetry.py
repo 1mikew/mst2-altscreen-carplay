@@ -67,6 +67,8 @@ def faults(r, prev_fail, burst):
         marks.append(f"frame-burst({r['daus']})")
     if r.get("ddrop", 0) > 0:
         marks.append(f"frames-dropped(+{r['ddrop']})")
+    if r.get("dkf", 0) > 0:
+        marks.append(f"we-asked-keyframe(+{r['dkf']})")
     return bad, marks
 
 
@@ -110,7 +112,18 @@ def verdict(reasons, marks):
         where = "with a burst of frames from the phone"
     else:
         where = "with the phone sending evenly, so the cause is on this side"
-    return f"{what}, {where}"
+    # The outcome matters as much as the cause: an episode the window survived is the
+    # two-stage recovery doing its job, and the driver saw nothing.
+    if "context-down" in reasons:
+        held = " -- the context went down, so the built-in map showed"
+    elif reasons & {"not-feeding", "push-failed"}:
+        # Only worth saying where keeping the window is the thing that was at stake. When
+        # capture or composition is the fault, our window holding changes nothing.
+        held = (" -- a keyframe was asked for and the window held, so nothing was visible"
+                if "we-asked-keyframe" in marks else " -- but the window held")
+    else:
+        held = ""
+    return f"{what}, {where}{held}"
 
 
 def hhmmss(t):
@@ -178,7 +191,8 @@ def main(argv):
                   f"dcomp={r.get('dcomp',0):<5} cap={r.get('cap',-1):<3} "
                   f"sent={r.get('sent',0):<8} dsent={r.get('dsent',0):<5} "
                   f"state={r.get('state',0)} daus={r.get('daus',0):<4} "
-                  f"didrs={r.get('didrs',0)} ddrop={r.get('ddrop',0)}{mark}")
+                  f"didrs={r.get('didrs',0)} ddrop={r.get('ddrop',0)} "
+                  f"dkf={r.get('dkf',0)}{mark}")
 
     print(f"\n{len(rows)} samples, {hhmmss(rows[0]['t'])} to {hhmmss(rows[-1]['t'])}")
     if gaps:

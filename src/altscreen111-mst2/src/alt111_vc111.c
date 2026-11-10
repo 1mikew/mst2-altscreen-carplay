@@ -537,6 +537,19 @@ static int v_splash_show(const char *out_url)
 #define V_DPY6     "/dev/screen/0/dpy-6"
 #define V_KEYFRAME "/tmp/mibr-alt111-keyframe-only"
 
+/* Ask gen2 for a keyframe. Counted, because the telemetry has to show the first stage of
+ * a recovery firing: a request with no teardown after it is the whole point of the
+ * two-stage response, and that is invisible on the timeline if only the verbose log
+ * records it. */
+static unsigned long v_kf_asked;
+
+static void v_ask_keyframe(void)
+{
+    FILE *k = fopen(V_KEYFRAME, "w");
+    if (k) fclose(k);
+    v_kf_asked++;
+}
+
 /* read the composition counter from the dpy-6 dump, and whether capture is active */
 static unsigned long v_dpy_counter(int *capturing)
 {
@@ -681,13 +694,13 @@ static void *v_ship_worker(void *arg)
 {
     off_t off_lib = 0, off_sink = 0;
     unsigned long long last_aus = 0, last_idrs = 0, last_rsy = 0, last_drop = 0;
-    unsigned long last_comp = 0;
+    unsigned long last_comp = 0, last_kf = 0;
     long last_sent = 0;
     unsigned beat = 0;
     (void)arg;
 
     for (;;) {
-        char line[384], dst[320];
+        char line[448], dst[320];
         unsigned long long aus = 0, idrs = 0, rsy = 0, drop = 0;
         unsigned long comp;
         int capturing = -1;
@@ -704,16 +717,18 @@ static void *v_ship_worker(void *arg)
         snprintf(line, sizeof(line),
                  "%ld comp=%lu dcomp=%ld cap=%d sent=%ld dsent=%ld fail=%ld state=%d "
                  "aus=%llu daus=%lld idrs=%llu didrs=%lld rsy=%llu drsy=%lld "
-                 "drop=%llu ddrop=%lld\n",
+                 "drop=%llu ddrop=%lld kf=%lu dkf=%ld\n",
                  (long)time(NULL), comp, (long)comp - (long)last_comp, capturing,
                  v_sent, v_sent - last_sent, v_fail_total, v_state,
                  aus,  (long long)(aus  - last_aus),
                  idrs, (long long)(idrs - last_idrs),
                  rsy,  (long long)(rsy  - last_rsy),
-                 drop, (long long)(drop - last_drop));
+                 drop, (long long)(drop - last_drop),
+                 v_kf_asked, (long)(v_kf_asked - last_kf));
         last_comp = comp;
         last_sent = v_sent;
         last_aus = aus; last_idrs = idrs; last_rsy = rsy; last_drop = drop;
+        last_kf = v_kf_asked;
 
         snprintf(dst, sizeof(dst), "%s/telemetry.log", v_ship_dir);
         v_ship_rotate(dst);
@@ -826,7 +841,7 @@ static void v_watchdog(void)
                 v_event("dpy-6 composition stalled for %ds (counter=%lu) while we are still "
                       "pushing -> requesting a keyframe, leaving the window alone",
                       (int)(now - stall_since), c);
-                { FILE *k = fopen(V_KEYFRAME, "w"); if (k) fclose(k); }
+                v_ask_keyframe();
             } else if (now - nudged_at >= v_stall_s()) {
                 /* The keyframe did not unstick it. Tearing the context down does, but it
                  * uncovers the stock map for as long as the rebuild takes, so it is the
@@ -1032,10 +1047,9 @@ void vc111_feed(const uint8_t *au, size_t n, unsigned nal_len_size,
             static time_t last_req;
             time_t now = time(NULL);
             if (now - last_req >= 10) {
-                FILE *k;
                 last_req = now;
-                k = fopen(V_KEYFRAME, "w");
-                if (k) { fclose(k); v_log("waiting for a keyframe; requesting one"); }
+                v_ask_keyframe();
+                v_log("waiting for a keyframe; requesting one");
             }
             /* Cover the wait with our own picture rather than whatever the cockpit is
              * still holding. Only once DisplayManager is capturing -- same reason as the
@@ -1121,10 +1135,8 @@ void vc111_feed(const uint8_t *au, size_t n, unsigned nal_len_size,
                     time_t now = time(NULL);
                     v_fail = 0;
                     if (now - v_fail_nudged >= 5) {
-                        FILE *k;
                         v_fail_nudged = now;
-                        k = fopen(V_KEYFRAME, "w");
-                        if (k) fclose(k);
+                        v_ask_keyframe();
                         v_event("31 pushes refused in a row (total=%ld ok=%ld) -> keyframe "
                                 "requested, window kept", v_fail_total, v_sent);
                     } else {

@@ -997,6 +997,17 @@ access units are thrown away. `tools/read-telemetry.py` reports dropped frames
 ahead of the keyframe and burst markers -- that we could not take the burst says
 more than that it arrived, and it is the half that is ours to fix.
 
-Four scenarios were run against the reader to check it names each one correctly:
+The sink's own keyframe requests are counted into the telemetry as well (`kf`,
+`dkf`). Without that, the first stage of the new recovery is invisible on the
+timeline -- a request followed by no teardown is the whole point of making the
+response two-stage, and it would otherwise only appear in the verbose log and
+have to be cross-referenced by hand.
+
+Five scenarios were run against the reader to check it names each one correctly:
 our own keyframe, an unprompted one from the phone, a rezoom overrunning the
-queue, and DisplayManager simply stopping its capture.
+queue, DisplayManager simply stopping its capture, and a burst ridden out -- that
+last one reading as "a keyframe was asked for and the window held, so nothing was
+visible", which is what the fix working should look like. The outcome clause is
+only printed where keeping the window was what was at stake; when capture or
+composition is the fault, our window holding changes nothing and saying so would
+mislead.

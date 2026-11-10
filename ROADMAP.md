@@ -64,6 +64,9 @@ The overlay is gone, so the picture can finally be judged on its own.
    shipper writes one telemetry line a second plus both verbose logs onto the stick, which
    reads on a laptop in seconds. `tools/deploy.sh`, then `tools/set-logship.sh probe` to
    see where the stick landed, and `tools/read-telemetry.py` on it afterwards
+   Then the A/B that needs no build: `tools/set-d2.sh off` for one drive. We force a
+   keyframe on every turns edge, and slowing to a manoeuvre is exactly when the dropouts
+   were reported — so if they vanish with the policy off, the expensive keyframe was ours
    persistent event log, and until it is on the car no drive can be read: both logs live
    in `/tmp`, which the reboot behind every ignition cycle wipes, so switching the car off
    destroys the evidence for a fault that only happens while driving. It also fixes the

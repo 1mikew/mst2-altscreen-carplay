@@ -17,7 +17,7 @@ def main():
     f = ftplib.FTP()
     f.connect(host, 21, timeout=20)
     f.login(user, pw)
-    # vytvor cilovy adresar (po castech, chyby ignoruj)
+    # create the destination directory a component at a time, ignoring failures
     parts = [p for p in a.to.strip("/").split("/") if p]
     f.cwd("/")
     for p in parts:

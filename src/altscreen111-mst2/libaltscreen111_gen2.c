@@ -397,8 +397,9 @@ static void tee_drop_client_locked(void);
 static void capture_drop_client_locked(void);
 static void capture_mirror_send(const uint8_t *p, size_t n,
                                 const struct alt111_output_ticket *ticket);
-/* Type-111 -> vlastni mm-renderer kontext -> cockpit (nativne 1010x376).
- * Stejne pasivni/zahoditelne jako capture mirror: nikdy nesmi zdrzet produkcni cestu. */
+/* Type-111 -> our own mm-renderer context -> cockpit, natively 1010x376.
+ * As passive and as droppable as the capture mirror: it must never hold up the
+ * production path. */
 void vc111_feed(const uint8_t *au, size_t n, unsigned nal_len_size,
                 const uint8_t *avcc_cfg, size_t cfg_len, unsigned idr);
 /* 1 = our cockpit sink is running, so the stream is worth producing even with no client

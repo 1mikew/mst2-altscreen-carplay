@@ -135,7 +135,7 @@ static void tr_rec(const char *what, int coid, const struct _tr_iov *iov, int pa
 {
     pthread_mutex_lock(&tr_lock);
     if (tr_cnt >= TR_MAX) {
-        tr_flush();                       /* mame dost -> zapis a dal uz nic */
+        tr_flush();                       /* enough collected: write it out and stop */
         pthread_mutex_unlock(&tr_lock);
         return;
     }

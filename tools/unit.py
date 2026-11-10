@@ -76,7 +76,7 @@ class Telnet:
 
     def close(self):
         # DULEZITE: korektne se odhlasit, jinak telnetd neuvolni pty a dalsi spojeni
-        # skonci na "login_tty: Operation not permitted" (QNX ma omezeny pocet pty).
+        # ends in "login_tty: Operation not permitted" -- QNX has few ptys.
         try:
             self.s.sendall(b"exit\r\n")
             time.sleep(0.25)

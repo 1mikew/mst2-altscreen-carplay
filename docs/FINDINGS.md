@@ -910,3 +910,37 @@ next write and picked up again when it returns.
 seconds into the episodes a driver would actually notice, prints gaps where the
 unit was off or the stick was out, and takes `--at HH:MM:SS` to show a window
 around a time reported from the road.
+
+## The dropouts track a change of speed, not a speed
+
+Reported from the drive of 10 Nov: the stream drops when slowing down, for
+example from 100 to 45 km/h. That reconciles the two reports of 5 Nov which
+looked contradictory -- one accelerating out of a village and one in a queue in
+town. A queue is nothing but accelerating and slowing down, so the common factor
+is not how fast the car is going but that the speed is **changing**. The earlier
+conclusion, "not speed-dependent", was right to reject absolute speed and wrong
+to stop there.
+
+Two mechanisms fit, and they live on opposite sides of the link:
+
+**The phone redraws the scene.** Apple Maps and Waze both rezoom the map as speed
+changes, which is a full redraw: a keyframe and a burst of access units for a
+moving 1010x376 map. Nothing we can stop at source.
+
+**The head unit changes the cluster data rate.** `ChangeDataRateSequence` exists
+in the HMI and `update rate` is a variable there, not a constant -- 1 and 0 have
+both been seen in other states. If a vehicle-state change runs that sequence,
+DisplayManager reconfigures its capture timer, and that is exactly the behaviour
+measured on 4 Nov when the map source was switched: the old timer disarmed, a new
+one created. Nothing reaches the cluster while that happens.
+
+The telemetry separates them, which is why `aus`, `idrs` and `rsy` were added to
+it. A dropout carrying a keyframe or a burst of frames came from the phone; one
+with the counters ticking along evenly did not, and the fault is on this side.
+`tools/read-telemetry.py` prints that as the verdict for each episode, so the
+reading does not depend on remembering which column means what.
+
+Still to check at the car, and not codeable blind: DisplayManager logs
+`update rate set to N` to the `dispmg` stdout log named in its `cpu.conf` block.
+If that log can be found and followed, a rate change at the moment of a dropout
+is direct evidence for the second mechanism.

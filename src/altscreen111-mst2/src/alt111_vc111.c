@@ -118,6 +118,10 @@ static int v_off(void)
 #define V_EVENTS_CAP 262144L
 /* The library's own log, shipped alongside ours. */
 #define V_LOG_LIB "/tmp/altscreen111.log"
+
+/* Defined in libaltscreen111_gen2.c; see the note there for why these three matter. */
+void alt111_source_counters(unsigned long long *aus, unsigned long long *idrs,
+                            unsigned long long *resyncs);
 #define V_DEV   "mdev111"
 #define V_IN    "mdevpush:/dev/name/local/" V_DEV \
                 "?fourcc=AVC1&video.frame_rate=30&video.depth=16" \
@@ -668,13 +672,15 @@ static int v_ship_tail(const char *src, const char *name, off_t *off)
 static void *v_ship_worker(void *arg)
 {
     off_t off_lib = 0, off_sink = 0;
+    unsigned long long last_aus = 0, last_idrs = 0, last_rsy = 0;
     unsigned long last_comp = 0;
     long last_sent = 0;
     unsigned beat = 0;
     (void)arg;
 
     for (;;) {
-        char line[256], dst[320];
+        char line[320], dst[320];
+        unsigned long long aus = 0, idrs = 0, rsy = 0;
         unsigned long comp;
         int capturing = -1;
         int fd, ok = 1;
@@ -686,12 +692,18 @@ static void *v_ship_worker(void *arg)
         }
 
         comp = v_dpy_counter(&capturing);
+        alt111_source_counters(&aus, &idrs, &rsy);
         snprintf(line, sizeof(line),
-                 "%ld comp=%lu dcomp=%ld cap=%d sent=%ld dsent=%ld fail=%ld state=%d\n",
+                 "%ld comp=%lu dcomp=%ld cap=%d sent=%ld dsent=%ld fail=%ld state=%d "
+                 "aus=%llu daus=%lld idrs=%llu didrs=%lld rsy=%llu drsy=%lld\n",
                  (long)time(NULL), comp, (long)comp - (long)last_comp, capturing,
-                 v_sent, v_sent - last_sent, v_fail, v_state);
+                 v_sent, v_sent - last_sent, v_fail, v_state,
+                 aus,  (long long)(aus  - last_aus),
+                 idrs, (long long)(idrs - last_idrs),
+                 rsy,  (long long)(rsy  - last_rsy));
         last_comp = comp;
         last_sent = v_sent;
+        last_aus = aus; last_idrs = idrs; last_rsy = rsy;
 
         snprintf(dst, sizeof(dst), "%s/telemetry.log", v_ship_dir);
         v_ship_rotate(dst);

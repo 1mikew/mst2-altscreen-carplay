@@ -2522,6 +2522,26 @@ static CFMutableDictionaryRef gen2_command_dictionary(const struct alt111_comman
     }
 }
 
+/* Read once a second by the log shipper in alt111_vc111.c.
+ *
+ * These are what separate a phone-side cause from ours when the cluster drops out. A
+ * dropout that arrives together with a keyframe or a burst of access units came from the
+ * phone changing what it draws -- both Apple Maps and Waze rezoom the map as the car's
+ * speed changes, which redraws the whole scene. One where the counters tick along evenly
+ * did not come from the phone, and the fault is on this side.
+ *
+ * Takes the core lock for three reads: 64-bit counters tear on 32-bit ARM, and
+ * microseconds of lock contention is cheaper than a nonsense delta in the log. */
+void alt111_source_counters(unsigned long long *aus, unsigned long long *idrs,
+                            unsigned long long *resyncs)
+{
+    pthread_mutex_lock(&g2_core_lock);
+    if (aus)     *aus     = (unsigned long long)g2_video.source_aus;
+    if (idrs)    *idrs    = (unsigned long long)g2_video.source_idrs;
+    if (resyncs) *resyncs = (unsigned long long)g2_resync.requests;
+    pthread_mutex_unlock(&g2_core_lock);
+}
+
 static void gen2_publish_status(void)
 {
     char b[3072];

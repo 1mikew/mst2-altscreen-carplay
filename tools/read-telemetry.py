@@ -41,21 +41,58 @@ def parse(line):
     return row if "comp" in row else None
 
 
-def faults(r, prev_fail):
-    out = []
+def faults(r, prev_fail, burst):
+    """Faults are what went wrong. Markers are what else happened at the same second and
+    say where the cause came from, so they are reported but never counted as faults."""
+    bad, marks = [], []
     state = r.get("state", 0)
     cap = r.get("cap", -1)
     if state != 1:
-        out.append(f"context-down(state={state})")
+        bad.append(f"context-down(state={state})")
     if cap != 1:
-        out.append(f"not-captured(cap={cap})")
+        bad.append(f"not-captured(cap={cap})")
     if state == 1 and r.get("dcomp", 0) <= 0:
-        out.append("composition-stalled")
+        bad.append("composition-stalled")
     if state == 1 and r.get("dsent", 0) <= 0:
-        out.append("not-feeding")
+        bad.append("not-feeding")
+    if state == 1 and "daus" in r and r["daus"] <= 0:
+        bad.append("phone-stopped-sending")
     if r.get("fail", 0) > prev_fail:
-        out.append(f"push-failed(+{r['fail'] - prev_fail})")
-    return out
+        bad.append(f"push-failed(+{r['fail'] - prev_fail})")
+    if r.get("didrs", 0) > 0:
+        marks.append(f"keyframe(+{r['didrs']})")
+    if r.get("drsy", 0) > 0:
+        marks.append(f"we-asked-resync(+{r['drsy']})")
+    if burst and r.get("daus", 0) > burst:
+        marks.append(f"frame-burst({r['daus']})")
+    return bad, marks
+
+
+def verdict(reasons, marks):
+    """Name the stage that broke, then where the cause looks like it came from."""
+    if "not-captured" in reasons:
+        what = "DisplayManager stopped capturing -- nothing reached the cluster"
+    elif "composition-stalled" in reasons:
+        what = "dpy-6 stopped being recomposed"
+    elif "phone-stopped-sending" in reasons:
+        what = "the phone stopped sending"
+    elif "not-feeding" in reasons or "push-failed" in reasons:
+        what = "we stopped feeding"
+    elif "context-down" in reasons:
+        what = "our context was down"
+    else:
+        what = "nothing faulted"
+    if "keyframe" in marks and "frame-burst" in marks:
+        where = "with a keyframe and a burst of frames -- the phone redrew the scene"
+    elif "keyframe" in marks:
+        where = "with a keyframe -- the phone redrew the scene"
+    elif "frame-burst" in marks:
+        where = "with a burst of frames"
+    elif "we-asked-resync" in marks:
+        where = "after we asked for a resync, so we noticed it first"
+    else:
+        where = "with the phone sending evenly, so the cause is on this side"
+    return f"{what}, {where}"
 
 
 def hhmmss(t):
@@ -95,12 +132,21 @@ def main(argv):
         show_all = True
         print(f"window around {at}\n")
 
+    # A burst is judged against this drive, not a fixed number: the normal rate is about
+    # 30 access units a second but the phone is free to send fewer.
+    rates = sorted(r["daus"] for r in rows if r.get("daus", 0) > 0)
+    burst = rates[len(rates) // 2] * 3 if rates else 0
+
     prev_fail = rows[0].get("fail", 0)
     bad = []
+    marks_at = {}
     gaps = []
     prev_t = None
     for r in rows:
-        why = faults(r, prev_fail)
+        why, marks = faults(r, prev_fail, burst)
+        if marks:
+            marks_at[r["t"]] = marks
+        why = why + marks
         prev_fail = r.get("fail", 0)
         if prev_t is not None and r["t"] - prev_t > 2:
             gaps.append((prev_t, r["t"]))
@@ -113,7 +159,8 @@ def main(argv):
             print(f"{hhmmss(r['t'])}  comp={r.get('comp',0):<10} "
                   f"dcomp={r.get('dcomp',0):<5} cap={r.get('cap',-1):<3} "
                   f"sent={r.get('sent',0):<8} dsent={r.get('dsent',0):<5} "
-                  f"state={r.get('state',0)}{mark}")
+                  f"state={r.get('state',0)} daus={r.get('daus',0):<4} "
+                  f"didrs={r.get('didrs',0)}{mark}")
 
     print(f"\n{len(rows)} samples, {hhmmss(rows[0]['t'])} to {hhmmss(rows[-1]['t'])}")
     if gaps:
@@ -131,8 +178,17 @@ def main(argv):
                 start = last = t
         eps.append((start, last))
         print(f"{len(bad)} suspicious samples in {len(eps)} episode(s):")
+        by_t = {r["t"]: r for r in rows}
         for a, b in eps:
-            print(f"  {hhmmss(a)} .. {hhmmss(b)}  ({b - a + 1}s)")
+            reasons, marks = set(), set()
+            for t in range(a, b + 1):
+                r = by_t.get(t)
+                if not r:
+                    continue
+                w, m = faults(r, r.get("fail", 0), burst)
+                reasons.update(x.split("(")[0] for x in w)
+                marks.update(x.split("(")[0] for x in m)
+            print(f"  {hhmmss(a)} .. {hhmmss(b)}  ({b - a + 1}s)  {verdict(reasons, marks)}")
     else:
         print("nothing suspicious: composition advanced, capture held, we kept feeding")
     return 0

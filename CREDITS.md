@@ -46,6 +46,14 @@ separation is theirs.
 Their binaries are GPL-3.0 and were studied, as the licence allows. What that yields is
 knowledge of Apple's protocol, not their code; nothing from them is compiled into this.
 
+## harman-f, again — the `adjacentViewAreas` field
+
+Their protocol research records `updateViewArea` as carrying
+`{uuid, viewAreaIndex, animationDurationMillis, adjacentViewAreas}`. This side was
+sending the first three, which is why a view-area switch was accepted and then changed
+nothing. The field is theirs; the fallback that builds the number without
+`CFNumberCreate` is this side's, because the shim here does not export it.
+
 ## harman-f, again — the zoom command shape
 
 Upstream's keypanel research documents `changeMapZoomLevel` precisely: the `uuid` and

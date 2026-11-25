@@ -197,6 +197,10 @@ static fn_cftypeid_t p_CFStringGetTypeID;
 static fn_cftypeid_t p_CFDictionaryGetTypeID;
 static fn_cftypeid_t p_CFArrayGetTypeID;
 static fn_cftypeid_t p_CFNumberGetTypeID;
+/* THIS PROJECT: optional. Needed only to put numbers in an array (adjacentViewAreas).
+ * The AirPlay shim on this unit does not export it, so there is a fallback below. */
+typedef CFTypeRef (*fn_cfnumber_create_t)(void *, int, const void *);
+static fn_cfnumber_create_t p_CFNumberCreate;
 static fn_cftypeid_t p_CFBooleanGetTypeID;
 static fn_cftypeid_t p_CFDataGetTypeID;
 static fn_cfget_i64_t p_CFGetInt64;
@@ -855,6 +859,8 @@ static int init_api(void)
     RESOLVE(p_CFArrayAppendValue, "CFArrayAppendValue");
     RESOLVE(p_CFArrayCreateMutable, "CFArrayCreateMutable");
     RESOLVE(p_CFArrayCreateMutableCopy, "CFArrayCreateMutableCopy");
+    /* Optional, not RESOLVE: absence must not fail the whole bind. */
+    p_CFNumberCreate = (fn_cfnumber_create_t)sym_next("CFNumberCreate");
     RESOLVE(p_CFRetain, "CFRetain");
     RESOLVE(p_CFRelease, "CFRelease");
     p_dict_key_callbacks = dlsym(RTLD_DEFAULT, "kCFLDictionaryKeyCallBacksCFLTypes");
@@ -2499,6 +2505,65 @@ static CFMutableDictionaryRef command_stopui(void)
     p_CFRelease(params); return req;
 }
 
+/* THIS PROJECT: `adjacentViewAreas` -- the field our updateViewArea was missing, and the
+ * live explanation for a switch accepted with status=0 that changed nothing. Upstream's
+ * protocol research lists the command as
+ * {uuid, viewAreaIndex, animationDurationMillis, adjacentViewAreas}; we sent the first
+ * three. It names the other view areas reachable from the one being selected, so with two
+ * declared it is a single index.
+ *
+ * Our geometry is deliberately not upstream's. They size the zone to show the manoeuvre
+ * arrows and run the route to the right; here the card is left on the radio display and
+ * the cockpit carries the map alone, centred -- so only the protocol field is taken.
+ */
+static CFTypeRef number_int64(CFMutableDictionaryRef scratch, int64_t value)
+{
+    CFStringRef k;
+    CFTypeRef n = NULL;
+    if (p_CFNumberCreate) return p_CFNumberCreate(NULL, 4, &value);
+    /* No CFNumberCreate in this shim. CFDictionarySetInt64 builds one internally and the
+     * dictionary hands it straight back; the array retains it on append, and the scratch
+     * dictionary is released only afterwards. */
+    if (!scratch) return NULL;
+    k = s_cf("n");
+    if (!k) return NULL;
+    p_CFDictionarySetInt64(scratch, k, value);
+    n = p_CFDictionaryGetValue(scratch, k);
+    p_CFRelease(k);
+    return n;
+}
+
+static void set_adjacent_views(CFMutableDictionaryRef d, unsigned self, unsigned count)
+{
+    CFMutableArrayRef a = NULL;
+    CFMutableDictionaryRef scratch = NULL;
+    CFStringRef k = NULL;
+    unsigned i, added = 0;
+
+    if (!d || count < 2u) return;            /* one view area has no neighbours */
+    a = p_CFArrayCreateMutable(NULL, 0, p_array_callbacks);
+    k = s_cf("adjacentViewAreas");
+    if (!p_CFNumberCreate) scratch = dict_new();
+    if (a && k) {
+        for (i = 0; i < count; ++i) {
+            CFTypeRef n;
+            if (i == self) continue;
+            n = number_int64(scratch, (int64_t)i);
+            if (!n) continue;
+            p_CFArrayAppendValue(a, n);
+            ++added;
+            if (p_CFNumberCreate) p_CFRelease(n);   /* ours; the scratch path's is not */
+        }
+        if (added) p_CFDictionarySetValue(d, k, a);
+    }
+    if (k) p_CFRelease(k);
+    if (a) p_CFRelease(a);
+    if (scratch) p_CFRelease(scratch);
+    if (!added)
+        logf_u2("GEN2 adjacentViewAreas omitted: no number could be built (CFNumberCreate=%d)",
+                p_CFNumberCreate ? 1 : 0);
+}
+
 static CFMutableDictionaryRef command_update_view(unsigned view)
 {
     CFMutableDictionaryRef req=dict_new(), params=dict_new();
@@ -2507,6 +2572,7 @@ static CFMutableDictionaryRef command_update_view(unsigned view)
     set_str(params,"uuid",g_alt_uuid);
     set_i64(params,"viewAreaIndex",(int64_t)view);
     set_i64(params,"animationDurationMillis",0);
+    set_adjacent_views(params,view,(unsigned)(g_view_nav>0?2:1));
     { CFStringRef k=s_cf("params"); p_CFDictionarySetValue(req,k,params); p_CFRelease(k); }
     p_CFRelease(params); return req;
 }

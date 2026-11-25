@@ -1011,3 +1011,55 @@ visible", which is what the fix working should look like. The outcome clause is
 only printed where keeping the window was what was at stake; when capture or
 composition is the fault, our window holding changes nothing and saying so would
 mislead.
+
+## `adjacentViewAreas`: the field the view-area switch was missing
+
+An earlier entry here concluded that the guiding rectangle was inert and that two
+view areas were a dead end. **That was measured with an incomplete command.**
+
+Upstream's protocol research lists `updateViewArea` as
+`{uuid, viewAreaIndex, animationDurationMillis, adjacentViewAreas}`. This side was
+sending the first three. The missing field names the view areas reachable from the
+one being selected; with two declared it is a single-element array holding the
+other index.
+
+Verified at the car on 15 Nov, from the library log:
+
+    GEN2 ViewArea[1] guiding safe=700x320@0,28
+    GEN2 ViewArea[0] full=1010x376 safe=700x320@155,28 views=2
+    GEN2 guidance turns=0 -> viewArea 0
+
+Two areas are declared, the switch fires, no session logged
+`adjacentViewAreas omitted`, and the selected index is honoured. So the mechanism
+works and the earlier verdict is withdrawn.
+
+`turns` is also a stable signal, contrary to a reading taken the same evening:
+with one route started and the phone then left alone it held 1 for 91 seconds
+across five mode changes. The blips that suggested otherwise were routes being
+started and cancelled during the measurement.
+
+**`CFNumberCreate` is not exported by the AirPlay shim on this unit.** `strings`
+over `libext.apple.carplay.airplay.so` shows the `CFArray*` family but not that,
+and QNX has no CoreFoundation of its own. So the number is built either way: when
+the symbol resolves it is used directly, otherwise `CFDictionarySetInt64` builds
+one internally and the dictionary hands it straight back, which needs only
+symbols already resolved here. The array retains it on append and the scratch
+dictionary is released afterwards — the same ownership pattern
+`add_reference_viewarea` relies on. If no number can be built the field is
+omitted and that is logged, so a broken command is never sent.
+
+### What this does not settle
+
+**The geometry is unmeasured.** A sweep of rectangle values judged from
+photographs of the cluster produced a table that did not survive a control: a
+repeat photograph in an *unchanged* configuration moved the arrow 23.5 percentage
+points across the map panel, against 1.6 points measured for a 20-unit change in
+`x` and 4.3 for a 200-unit change in width. Every effect was inside the variation
+of the thing being measured, so nothing was established about where the rectangle
+puts the picture — including whether one view area is better than two.
+
+The arrow's position while guiding follows the road and the route, not only the
+safe area. Comparing configurations needs identical map content, which
+photographs taken minutes apart cannot give. Reading frames through the capture
+mirror on `127.0.0.1:19821` with `alt111-dump`, car stationary and route fixed,
+is the way to do it.
